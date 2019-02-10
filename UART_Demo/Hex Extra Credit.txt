@@ -1,0 +1,97 @@
+Gwendolyn Munson
+CMPE-240-01: Extra Credit Activity
+Hexadecimal - Conversion and Clearing/Setting Bits
+
+
+Instructions:
+    1. All values and registers given are eight (8) bits wide.
+    2. Provide hexadecimal values in 0x... format.
+    3. Leave your answer (with reasoning where appropriate) underneath
+       the question.
+    4. Submit your answers (i.e., in this text file) to MyCourses
+	   Dropbox: "Hexadecimal Extra Credit" by Nov. 14, 11:59 PM.
+    5. Full credit on this assignment will add 2 bonus points to your overall grade.
+
+
+
+Questions:
+    1. Convert 173 to hexadecimal.
+       Answer: 0xAD
+       Reasoning: I did a conversion to binary first as it's easier for me to
+	   process powers of 2 than powers of 16. The highest power of 2 that can 
+	   be subtracted from it is 7, or 128, which leaves 45 left over. The next
+	   highest power of 2 is 5, or 32, which leaves 12 left over. The next
+	   highest power of 2 is 3, or 8, which leaves 5 left over. The next highest
+	   power of 2 is 2, or 4, which leaves 1 left over. The last power of 2 left 
+	   is 0, or 1, which leaves nothing left over. We now have our binary as follows:
+	   Powers: 7 6 5 4   3 2 1 0
+	   Binary: 1 0 1 0 | 1 1 0 1
+	   Using the binary to hex conversion chart provided by Professor Kiser, I 
+	   converted the binary to hex as follows:
+	   Binary: 1 0 1 0 | 1 1 0 1
+	   Hex:       A         D
+	   The answer to the question is 0xAD.
+       
+    2. Convert 0xAC to decimal. (Hint: Convert it to binary first!)
+       Answer: 172
+       Reasoning: Using the binary to hex conversion chart provided by Professor Kiser, I 
+	   converted the hex to binary as follows:
+	   Hex: AC
+	   A = 1010
+	   C = 1100
+	   Binary: 1 0 1 0 | 1 1 0 0
+	   Powers: 7 6 5 4   3 2 1 0
+	   Now that we have the binary, we can grab the powers of two that we need as shown above.
+	   We need 2^7, 2^5, 2^3, and 2^2, which is 128 + 32 + 8 + 4, or 172.
+       
+    3. What is the value of 11010110 in hexadecimal? Decimal?
+       Answer: 0xD6, 214
+       Reasoning: Using the binary to hex conversion chart provided by Professor Kiser, I 
+	   converted the binary to hex as follows:
+	   Binary: 1 1 0 1 | 0 1 1 0
+	   Hex:    D		6
+	   D = 1101
+	   6 = 0110
+	   Thus, the value in hexadecimal is 0xD6. We can take this binary and convert it to 
+	   decimal by determining the powers of 2 that we need:
+	   Powers: 7 6 5 4   3 2 1 0
+	   Binary: 1 1 0 1 | 0 1 1 0
+	   As shown above, we need 2^7. 2^6, 2^4, 2^2, and 2^1, which is 128 + 64 + 16 + 4 + 2. 
+	   or 214.
+       
+    
+    (Questions 4 through 6 deal with the following registers. These registers
+    were taken from ST Microelectronics' reference manual for their STM8S and
+    STM8AF series microcontrollers, for those who are curious)
+    Assume you have an embedded device with the following registers:
+    
+    Port X Output Data Register (Px_ODR)
+        Address Offset: 0x00
+        Reset Value: 0x00
+          7      6      5      4      3      2      1      0
+        ODR7 | ODR6 | ODR5 | ODR4 | ODR3 | ODR2 | ODR1 | ODR0
+    
+    Port X Input Data Register (Px_IDR, read-only)
+        Address Offset: 0x01
+        Reset Value: N/A
+          7      6      5      4      3      2      1      0
+        IDR7 | IDR6 | IDR5 | IDR4 | IDR3 | IDR2 | IDR1 | IDR0
+     
+    Suppose you are given C code that defines the registers as follows
+    (assume P1_BASE_ADDR is defined elsewhere):
+        uint8_t *p1_odr = (uint8_t *) P1_BASE_ADDR;
+        uint8_t *p1_idr = (uint8_t *) P1_BASE_ADDR + 0x01;
+    
+    Using the C code definition above:
+    
+    4. Write C code that sets ONLY the ODR0 bit in P1_ODR to 1.
+       Answer: p1_odr |= 0x01;
+	   //On a side note here, 1 works as well as it's assumed that the leftmost bits
+	   //are all 0, but I wanted to write it out in hex and specify what the other bits
+	   //are as, because they're 0 in a bitwise or, the other bits are unchanged.
+    
+    5. Write C code that clears _both_ the ODR2 and ODR7 bits in P1_ODR.
+       Answer: p1_odr &= 0x7B; //sets bits 7 and 2 to 0, leaves rest unchanged
+    
+    6. Write C code that waits until the IDR3 bit in P1_IDR is set to 1.
+       Answer: while(p1_idr |= 0x04);
