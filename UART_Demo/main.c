@@ -15,28 +15,28 @@
 #define MAX_LOW_LIMIT 9950 //given in problem statment
 #define DEFAULT_LOW_LIMIT 950 //given in problem statment
 #define MIN_LOW_LIMIT 50 //given in problem statment
-#define NUMBER_OF_PULSES 100 //used for array sizing
+#define NUMBER_OF_PULSES 1000 
+#define RANGE_OF_TIMES 100
 #define MAX_BUCKET_COUNT 5 
 
 char currLow[40];//current low used for display purposes
 char input[10];//used for grabbing user input
-char bucketOutput[MAX_BUCKET_COUNT];
-char bucketValueOutput[MAX_BUCKET_COUNT];
-char menu[] = "Please enter in a value for the lower limit of the pulse test (50 to 950 microseconds, anything outside this range will run default values):\r\n";
+char menu[] = "Please enter in a value for the lower limit of the pulse test (50 to 950 microseconds, anything outside this range will run previous values):\r\n";
 char bucketPrintStart[] = "Program Results:\r\n";
 char bucketPrintEnd[] = "End of results.\r\n";
 char passedPost[] = "POST test passed!\r\n";
 char failedPost[] = "POST test failed! Do you wish to run again? (N to exit, anything else to continue):\r\n";
 char outputModifier[] = "\r\n";//used to display output on its own line
-int recordedTimes[NUMBER_OF_PULSES];//these are the times we've recorded from the testing
+int testTimes[NUMBER_OF_PULSES];
+int bucketValues[RANGE_OF_TIMES];
 int lowLimit = DEFAULT_LOW_LIMIT;//in microseconds
-int highLimit = DEFAULT_LOW_LIMIT + 100;//in microseconds
+int highLimit = DEFAULT_LOW_LIMIT + RANGE_OF_TIMES;//in microseconds
 
-//compare function used for C's qsort() function to sort the array of collected values
-//I grabbed this from TutorialsPoint as this is a function that makes qsort sort in ascending order
-int cmpfunc (const void * a, const void * b) {
-   return ( *(int*)a - *(int*)b );
-}
+/**
+  Prints out the combination of a formated string and a single value to USART
+	@param text The formatted string
+	@param value The value to print out within the string
+**/
 
 void printStringInt(char* text, int value){
 	int bufSize=strlen(text)+MAX_U32_DIGIT_SIZE+1;
@@ -44,6 +44,12 @@ void printStringInt(char* text, int value){
 	sprintf(textBuffer,text, value);
 	USART_Write(USART2, (uint8_t *)textBuffer, bufSize);
 	memset(textBuffer,0,strlen(textBuffer));
+}
+
+void init_bucket(){
+	for(int i = 0; i < RANGE_OF_TIMES; i++){
+		bucketValues[i] = 0;
+	}
 }
 
 void init_pa0( void )
@@ -102,54 +108,27 @@ void set_timer2(){
 }
 
 int post_test(){
-	/*
-		Commented code was used for debugging and understanding the status registers.
-		Initially, POST would always fail even when input was being detected.
-	*/
-	
-//	int testVal= TIM2->CNT & TIM_CNT_CNT;
-//	short status = TIM2->SR;
-	
+		
 	TIM2->CNT &= ~TIM_CNT_CNT;
 	TIM2->CR1 |= TIM_CR1_CEN; //input for CH1 is now being captured
 	
-//	int val=TIM2->CCMR1;
-//	int val2=TIM2->CCER;
-//	printStringInt("CCMR1 Reg:%d\r\n",val);
-//	printStringInt("CCER Reg:%d\r\n",val2);
-//	printStringInt("Current Counter Val:%d\r\n",testVal);
-//	printStringInt("Current Status Val:%x\r\n",status);
 	while(1){
-//		testVal= TIM2->CNT & TIM_CNT_CNT;
-//		status = TIM2->SR;
-		
 		if((TIM2->SR & TIM_SR_CC1IF)){
 			return 1;
 		}
 		else if(TIM2->CNT >= 100000){
 			TIM2->CR1 &= ~TIM_CR1_CEN; //input for CH1 is now disabled
-//			printStringInt("Current Counter Val:%d\r\n",testVal);
-//	    printStringInt("Current Status Val:%x\r\n",status);
 			return 0;
-		}
-	}
-}
+		}//end else if statement
+	}//end while loop
+}//end post_test()
 
 int capture_input(){
-	/*
-	PSEUDOCODE:
-		Enable timer before busy wait
-		while	CC1IF is 0, busy wait
-		once while loop is exited, stop timer
-		elapsed time = end time - start time
-	  return time
-	CC1IF - used to mark when input is received from the oscilliscope
-	CCR1 contains the time (pg 915)
-	*/
-	while((TIM2->SR & TIM_SR_CC1IF) != 1) {}//busy wait until input is detected
+	TIM2->CNT &= ~TIM_CNT_CNT;
+	while((TIM2->SR & TIM_SR_CC1IF) == 0) {}//busy wait until input is detected
 	//input detected!!!! let's grab it 
 	int pulseTime = TIM2->CCR1;
-	if( !(pulseTime > highLimit || pulseTime < lowLimit) ){
+	if( pulseTime <= highLimit && pulseTime >= lowLimit ){
 		return pulseTime;//it's within range and should be counted!!!!
 	}
 	return 0;//this input is out of range!!!!
@@ -158,12 +137,13 @@ int capture_input(){
 int main(void){
 	char  rxByte;
 	
-	
-	System_Clock_Init(); // Switch System Clock = 80 MHz
+	//Initialization	
+	System_Clock_Init(); // Switch System Clock = 80 MHz normally
 	LED_Init();
 	UART2_Init();
 	set_timer2();
 	init_pa0();
+	init_bucket();
 	//monitor_pa0();
 	
 	//POST Test goes here
@@ -181,6 +161,7 @@ int main(void){
 	if(passPost){
 		USART_Write(USART2, (uint8_t *)passedPost, strlen(passedPost));
 	}
+	TIM2->CR1 &= ~TIM_CR1_CEN; //input for CH1 is now disabled
 		
 	while (1){
 		//UI code
@@ -206,50 +187,43 @@ int main(void){
 		input[i+1] = '\0';
 		int result = atoi(input);
 		//Is the input within range? Change the low limit to this value if it is; otherwise, stick with default
-		if( result > MAX_LOW_LIMIT || result < MIN_LOW_LIMIT ){
-			lowLimit = DEFAULT_LOW_LIMIT;
-			highLimit = DEFAULT_LOW_LIMIT + 100;
-		}
-		else{
+		if( !(result > MAX_LOW_LIMIT || result < MIN_LOW_LIMIT) ){
 			lowLimit = result;
 			highLimit = lowLimit + 100;
 		}
 
 		TIM2->CR1 |= TIM_CR1_CEN; //input for CH1 is now being captured
 		//Run actual program
-		int totalTimes = 0;
-		while (totalTimes != NUMBER_OF_PULSES){
-			int currentTime = capture_input();
-			if( currentTime > 0){
-				recordedTimes[totalTimes] = currentTime;
+		int currentTime = 0;
+		int bucketIndex = 0;
+		TIM2->CNT &= ~TIM_CNT_CNT;
+		for(int i = 0; i < NUMBER_OF_PULSES; i++){
+			currentTime = capture_input();
+//			testTimes[i] = currentTime;
+			if(currentTime != 0){
+				bucketIndex = currentTime - lowLimit;
+				bucketValues[bucketIndex] += 1;
 			}//end if statement
-			totalTimes++;
-		}//end while loop
+			else{
+				i--;//skip this run - value is out of range!!!!
+			}
+		}//end for loop
 		
 		//Display results
-		//let's sort the recorded times to make actually displaying this easy
-		qsort(recordedTimes, NUMBER_OF_PULSES, sizeof(int), cmpfunc );
-		int currBucket = recordedTimes[0];//we're gonna start the first bucket with the first element in the array
-		int bucketSize = 0;//number of values within the bucket
 		USART_Write(USART2, (uint8_t *)bucketPrintStart, sizeof(bucketPrintStart));
-		for(int i = 0; i < NUMBER_OF_PULSES; i++){
-			if(currBucket == recordedTimes[i]){bucketSize++;}
-			else{
-				if(currBucket != 0){//zeroes may be in the array - this means the value was out of range.
-					sprintf(bucketOutput, "%i\t", currBucket);
-					sprintf(bucketValueOutput, "%i\t", bucketSize);
-					USART_Write(USART2, (uint8_t *)bucketOutput, sizeof(bucketOutput));
-					USART_Write(USART2, (uint8_t *)bucketValueOutput, sizeof(bucketValueOutput));
-					USART_Write(USART2, (uint8_t *)outputModifier, strlen(outputModifier));
-				}
-				currBucket = recordedTimes[i];
-				bucketSize = 0;
-			}//end else statement
+		for(int i = 0; i < RANGE_OF_TIMES; i++){
+			if(bucketValues[i] > 0){
+				printStringInt("Bucket: %d\t",lowLimit + i);
+				printStringInt("Frequency: %d\t",bucketValues[i]);
+				USART_Write(USART2, (uint8_t *)outputModifier, strlen(outputModifier));
+			}//end if statement
 		}//end for loop
 		USART_Write(USART2, (uint8_t *)bucketPrintEnd, sizeof(bucketPrintEnd));
+		
 				
 		//Clear input string
 		memset(input,0,strlen(input));
+		init_bucket();//used for clearing as it just sets everything to 0
 		TIM2->CR1 &= ~TIM_CR1_CEN; //input for CH1 is now disabled
 		//add input disable here
 	}
