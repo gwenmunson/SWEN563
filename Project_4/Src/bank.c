@@ -1,25 +1,35 @@
 #include "bank.h"
 
-total_metrics m;
-bank b;
+total_metrics m; //Total metrics struct used as a global variable in order to keep track of metrics
+bank b;//Bank struct used as a global variable to represent the bank as a whole
 
+/*
+ * Handles the operation of the bank, starting up the bank and creating customers and handling customers
+ * until the bank closes at 4:00 PM (7 hours system runtime). The bank time always starts at 9:00 AM.
+ * All metrics are recorded using the total_metrics global variable.
+ *
+ * param argument: A void pointer that takes in any additional arguments sent in from the main.c file. 
+ * return: none 
+ */
 void bank_managing_thread(void* argument){
 
-
+	//Creating customers
 	b.customers = xQueueCreate(256, sizeof(customer));
 
+	//Opening bank
 	TickType_t start = xTaskGetTickCount();
 	TickType_t last_thread_wake = start;
 
-	float simTime = 0;
-	bool open = true;
-
+	float simTime = 0;//Time: 9:00 AM
+	bool open = true;//bank is now open!
 	int customers_entered = 0;
 
+	//Begin bank operation
 	while(simTime < 420){
 		int customer_interval = rand(300) + 100;
-		simTime += customer_interval*600;
+		simTime += customer_interval;
 		if(simTime >= 420){
+			//The bank is closed, so no new customers will be created/serviced
 			break;
 		}
 		vTaskDelayUntil(&last_thread_wake, pdMS_TO_TICKS(customer_interval));
@@ -29,15 +39,23 @@ void bank_managing_thread(void* argument){
 			m.max_queue_depth = uxQueueMessagesWaiting(b.customers);
 		}
 		m.customers_served++;
-		// PRINT CONTINUOUS METRICS
+		// TODO: PRINT CONTINUOUS METRICS
+		// !!!!USE vTaskDelete(NULL) FOR PRINTING THREADS!!!!
 	}
 	TickType_t end = xTaskGetTickCount();
 
 	int customers_left_in_queue = uxQueueMessagesWaiting(b.customers);
 
-	// Total Metrics?
+	// TODO: Total Metrics?
 }
 
+/*
+ * Creates a new teller thread for servicing a customer. The amount of time needed to serve a customer is
+ * generated here instead of customer creation itself. 
+ *
+ * param argument: A void pointer that takes in any additional arguments sent in from the main.c file. 
+ * return: none 
+ */
 void teller_thread(void* argument){
 	teller t = {IDLE,0,0,0,0};
 	TickType_t last_thread_wake = xTaskGetTickCount();
@@ -49,6 +67,12 @@ void teller_thread(void* argument){
 	}
 }
 
+/*
+ * Random Number Generator using freeRTOS's provided RNG code. Starts at 0. 
+ *
+ * param max: the max value that a random number can be (range is 0 to max).
+ * return: random number generated
+ */
 int rand(int max){
 	uint32_t random_number;
 	HAL_RNG_GenerateRandomNumber(&hrng, &random_number);
@@ -57,6 +81,12 @@ int rand(int max){
 	return (random_number>=0 ? (int) random_number : ((int) random_number)*-1);
 }
 
+/*
+ * Handles printing out total metrics. May be reworked in the future, so this is more placeholder code. 
+ *
+ * param: none
+ * return: none 
+ */
 void display_total_metrics(void){
 	char customers_served[128];
 	char customers_served_teller_1[128];
