@@ -131,3 +131,59 @@ void display_total_metrics(void){
 	sprintf(max_break_time, "Max Teller Break Time: %f\r\n", m.max_break_time);
 	sprintf(min_break_time, "Minimum Teller Break Time: %f\r\n", m.min_break_time);
 }
+
+/*
+ * Prints out formatted text to the USART
+ * param text: the formatted string
+ * param ...: The variable amount of values to pass along
+ */
+void print(char *text, ...) {
+   va_list args;
+	 int bufSize;
+	 char testBuffer[1]; //now needed apparently
+	
+   va_start(args, text);
+	 bufSize=vsnprintf(testBuffer,1,text,args); //need to write to the testbuffer. vsnprintf wont work with null and 0 arguments anymore for some reason
+	 testBuffer[0]='\0';
+	
+	 char textBuffer[bufSize+1];
+	
+   vsprintf(textBuffer, text, args);
+	 textBuffer[bufSize]='\0';
+   va_end(args);
+	
+	 HAL_UART_Transmit(&huart2, (uint8_t *)textBuffer, bufSize+1, 1000000);
+	 memset(textBuffer,0,strlen(textBuffer));
+}
+
+
+/*
+ * Prints out formatted text to the USART, along with a newline at the end
+ * Note: Unfortunately, it is no where near so simple to pass along a va_list to another
+ * variable function, so the code is just  repeated with the newline at the end
+ *  
+ * param text: The formatted String
+ * param ...: The variable amount of values to pass along
+ */
+void println(char *text, ...) {
+	 va_list args;
+   int bufSize;
+	 char testBuffer[1]; //now needed apparently
+	
+   va_start(args, text);
+	 bufSize=vsnprintf(testBuffer,1,text,args); //need to write to the testbuffer. vsnprintf wont work with null and 0 arguments anymore for some reason
+	 testBuffer[0]='\0';
+	
+	 char textBuffer[bufSize+1];
+	
+   vsprintf(textBuffer, text, args);
+	 textBuffer[bufSize]='\0';
+   va_end(args);
+	
+	 HAL_UART_Transmit(&huart2, (uint8_t *)textBuffer, bufSize+1, 1000000);
+	 memset(textBuffer,0,strlen(textBuffer));
+	 
+	 HAL_UART_Transmit(&huart2, (uint8_t *)NEWLINE, strlen(NEWLINE), 1000000);
+}
+
+
