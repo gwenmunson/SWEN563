@@ -21,13 +21,16 @@
  * int time_entered_queue: tick count of when customer entered queue, used for calculating metrics
  * int time_left_queue: tick count of when customer left queue, used for calculating metrics
  * int time_left_teller: tick count of when teller is finished with customer, used for calculating metrics
- *     and is different from the time the customer leaves the queue. Inside customer struct for extenability.
+ *     and is different from the time the customer leaves the queue. Inside customer struct for extenability. 
+ * int interval_time: the randomly generated time between 30 seconds and 8 minutes (system time) used for 
+			 servicing a customer.
  */
 struct customer{
 	int id;
 	int time_entered_queue;
 	int time_left_queue;
 	int time_left_teller;
+	int interval_time;
 };
 
 /*
