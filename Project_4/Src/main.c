@@ -60,17 +60,18 @@
 
 /* USER CODE BEGIN Includes */
 #include "string.h"
+#include "bank_1.h"
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-#define NUM_THREADS (5)
-TaskHandle_t thread_handles [NUM_THREADS];
-int id[NUM_THREADS];
-char name[NUM_THREADS][10];
-SemaphoreHandle_t HAL_mutex;
+//#define NUM_THREADS (5)
+//TaskHandle_t thread_handles [NUM_THREADS];
+//int id[NUM_THREADS];
+//char name[NUM_THREADS][10];
+//SemaphoreHandle_t HAL_mutex;
 	
 /* USER CODE END PV */
 
@@ -92,28 +93,27 @@ void vApplicationIdleHook( void ) {
 	idle_timer++;
 }
 
-void thread (void* argument) {
-	int arg = *(int*)argument;
-	char msg [25];
-	sprintf(msg, "Running Thread%d\r\n", arg);
-	xSemaphoreTake (HAL_mutex, 1000000000);
-	HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), 1000000);
-	xSemaphoreGive (HAL_mutex);
-	vTaskDelete (NULL);
-}
+//void thread (void* argument) {
+//	int arg = *(int*)argument;
+//	char msg [25];
+//	sprintf(msg, "Running Thread%d\r\n", arg);
+//	xSemaphoreTake (HAL_mutex, 1000000000);
+//	HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), 1000000);
+//	xSemaphoreGive (HAL_mutex);
+//	vTaskDelete (NULL);
+//}
 
-void thread_init (void) {
-	HAL_mutex = xSemaphoreCreateMutex ();
-	for (int i = 0; i < NUM_THREADS; i++) {
-		id[i] = i + 1;
-		sprintf (name[i], "Thread%d", id[i]);
-		if (pdPASS != xTaskCreate (thread,	name[i], 256, (void *)&id[i], osPriorityNormal, &thread_handles[i]))
-		{
-			_Error_Handler(__FILE__, __LINE__);
-		}
-	}
-	
-}
+//void thread_init (void) {
+//	HAL_mutex = xSemaphoreCreateMutex ();
+//	for (int i = 0; i < NUM_THREADS; i++) {
+//		id[i] = i + 1;
+//		sprintf (name[i], "Thread%d", id[i]);
+//		if (pdPASS != xTaskCreate (thread,	name[i], 256, (void *)&id[i], osPriorityNormal, &thread_handles[i]))
+//		{
+//			_Error_Handler(__FILE__, __LINE__);
+//		}
+//	}
+//}
 /* USER CODE END 0 */
 
 /**
@@ -151,7 +151,10 @@ int main(void)
   /* USER CODE BEGIN 2 */
 	
 	// TODO: Your code here
-	thread_init ();
+	char msg [128];
+	sprintf(msg, "Running Thread Init\r\n");
+	//HAL_UART_Transmit(&huart2, (uint8_t *)msg, strlen(msg), 1000000);
+	thread_init_1();
 
   /* USER CODE END 2 */
 
