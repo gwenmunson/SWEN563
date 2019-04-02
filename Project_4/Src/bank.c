@@ -26,14 +26,14 @@ void bank_managing_thread(void* argument){
 
 	//Begin bank operation
 	while(simTime < 420){
-		int customer_interval = rand(300) + 100;
+		int customer_interval = rand(450) + 30;
 		simTime += customer_interval;
 		if(simTime >= 420){
 			//The bank is closed, so no new customers will be created/serviced
 			break;
 		}
 		vTaskDelayUntil(&last_thread_wake, pdMS_TO_TICKS(customer_interval));
-		customer c = {customers_entered+1, last_thread_wake, 0,0};
+		customer c = {customers_entered+1, last_thread_wake, 0,0, customer_interval};
 		xQueueSend(b.customers,&c,0);
 		if(m.max_queue_depth < uxQueueMessagesWaiting(b.customers)){
 			m.max_queue_depth = uxQueueMessagesWaiting(b.customers);
@@ -57,15 +57,27 @@ void bank_managing_thread(void* argument){
  * return: none 
  */
 void teller_thread(void* argument){
-	teller t = {IDLE,0,0,0,0};
+	//teller t = {IDLE,0,0,0,0};
 	TickType_t last_thread_wake = xTaskGetTickCount();
 
 	int break_interval = rand(3000)+3000;
-	for(;;){
-		customer c;
-		BaseType_t rec_customers = xQueueReceive(b.customers, &c, pdMS_TO_TICKS(break_interval-last_thread_wake));
-	}
+	//add break functionality roll here (idk the random chance of a break happening?)
+	for(int i = 0; i < NUM_TELLERS; i++){
+		if(b.tellers[i].teller_status == IDLE){
+			for(;;){
+				customer c;//blank customer to be replaced with popped off customer from queue
+				BaseType_t rec_customers = xQueueReceive(b.customers, &c, pdMS_TO_TICKS(break_interval-last_thread_wake));
+				b.tellers[i].teller_status = BUSY;//working on a customer right now
+				//ADD SLEEP CODE HERE I'M DUMB
+				b.tellers[i].teller_status = IDLE;//customer is done being worked on
+				b.tellers[i].num_customers += 1;
+				b.tellers[i].total_transaction_time += c.interval_time;
+			}//end for loop
+		}//end if statement
+	}//end for loop
+	
 }
+
 
 /*
  * Random Number Generator using freeRTOS's provided RNG code. Starts at 0. 
