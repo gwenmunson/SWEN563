@@ -74,8 +74,7 @@ void bank_managing_thread(void* argument){
 		m.customers_served++;
 		xSemaphoreGive(metric_mutex, 10000);
 		customers_entered++;
-		display_continuous_metrics();
-		// !!!!USE vTaskDelete(NULL) FOR PRINTING THREADS!!!!
+		display_continuous_metrics(getSimTime());
 	}
 	TickType_t end = xTaskGetTickCount();
 	int customers_left_in_queue = uxQueueMessagesWaiting(b.customers);
@@ -217,6 +216,8 @@ void display_total_metrics(void){
 	sprintf(max_break_time, "Max Teller Break Time: %f\r\n", m.max_break_time);
 	sprintf(min_break_time, "Minimum Teller Break Time: %f\r\n", m.min_break_time);
 	xSemaphoreGive(metric_mutex,10000000);
+
+	print(customers_served, customers_served_teller_1, customers_served_teller_2, customers_served_teller_3, avg_customer_waiting_time, avg_teller_time, avg_teller_waiting_time, max_customer_wait_time, max_teller_wait_time, max_transaction_time, max_queue_depth);
 }
 
 char* teller_status_to_string(enum status teller_status){
@@ -249,6 +250,8 @@ void display_continuous_metrics(int sim_time){
 	sprintf(teller_status_1, "Teller 1 Status: %s\r\n\tCustomers Served: %d\r\n", b.tellers[0].teller_status, b.tellers[0].num_customers);
 	sprintf(teller_status_2, "Teller 2 Status: %s\r\n\tCustomers Served: %d\r\n", b.tellers[1].teller_status, b.tellers[1].num_customers);
 	sprintf(teller_status_3, "Teller 3 Status: %s\r\n\tCustomers Served: %d\r\n", b.tellers[2].teller_status, b.tellers[2].num_customers);
+
+	print(current_sim_time, teller_status_1, teller_status_2, teller_status_3);
 }
 
 /*
@@ -260,17 +263,17 @@ void print(char *text, ...) {
    va_list args;
 	 int bufSize;
 	 char testBuffer[1]; //now needed apparently
-	
+
    va_start(args, text);
 	 bufSize=vsnprintf(testBuffer,1,text,args); //need to write to the testbuffer. vsnprintf wont work with null and 0 arguments anymore for some reason
 	 testBuffer[0]='\0';
-	
+
 	 char textBuffer[bufSize+1];
-	
+
    vsprintf(textBuffer, text, args);
 	 textBuffer[bufSize]='\0';
    va_end(args);
-	
+
 	 HAL_UART_Transmit(&huart2, (uint8_t *)textBuffer, bufSize+1, 1000000);
 	 memset(textBuffer,0,strlen(textBuffer));
 }
@@ -280,7 +283,7 @@ void print(char *text, ...) {
  * Prints out formatted text to the USART, along with a newline at the end
  * Note: Unfortunately, it is no where near so simple to pass along a va_list to another
  * variable function, so the code is just  repeated with the newline at the end
- *  
+ *
  * param text: The formatted String
  * param ...: The variable amount of values to pass along
  */
@@ -288,20 +291,20 @@ void println(char *text, ...) {
 	 va_list args;
    int bufSize;
 	 char testBuffer[1]; //now needed apparently
-	
+
    va_start(args, text);
 	 bufSize=vsnprintf(testBuffer,1,text,args); //need to write to the testbuffer. vsnprintf wont work with null and 0 arguments anymore for some reason
 	 testBuffer[0]='\0';
-	
+
 	 char textBuffer[bufSize+1];
-	
+
    vsprintf(textBuffer, text, args);
 	 textBuffer[bufSize]='\0';
    va_end(args);
-	
+
 	 HAL_UART_Transmit(&huart2, (uint8_t *)textBuffer, bufSize+1, 1000000);
 	 memset(textBuffer,0,strlen(textBuffer));
-	 
+
 	 HAL_UART_Transmit(&huart2, (uint8_t *)NEWLINE, strlen(NEWLINE), 1000000);
 }
 

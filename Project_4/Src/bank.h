@@ -125,5 +125,17 @@ struct bank{
 };
 
 // Function Prototypes
+void setSimTime(int new_sim);
+int getSimTime(void);
+void thread_init(void);
+void bank_managing_thread(void* argument);
+void teller_thread(void* argument);
+int rand(int max);
+void calculate_total_metrics(void);
+void display_total_metrics(void);
+char* teller_status_to_string(enum status teller_status);
+void display_continuous_metrics(int sim_time);
+void print(char* text, ...);
+void println(char* text, ...);
 
 #endif
