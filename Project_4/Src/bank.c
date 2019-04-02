@@ -250,3 +250,59 @@ void display_continuous_metrics(int sim_time){
 	sprintf(teller_status_2, "Teller 2 Status: %s\r\n\tCustomers Served: %d\r\n", b.tellers[1].teller_status, b.tellers[1].num_customers);
 	sprintf(teller_status_3, "Teller 3 Status: %s\r\n\tCustomers Served: %d\r\n", b.tellers[2].teller_status, b.tellers[2].num_customers);
 }
+
+/*
+ * Prints out formatted text to the USART
+ * param text: the formatted string
+ * param ...: The variable amount of values to pass along
+ */
+void print(char *text, ...) {
+   va_list args;
+	 int bufSize;
+	 char testBuffer[1]; //now needed apparently
+	
+   va_start(args, text);
+	 bufSize=vsnprintf(testBuffer,1,text,args); //need to write to the testbuffer. vsnprintf wont work with null and 0 arguments anymore for some reason
+	 testBuffer[0]='\0';
+	
+	 char textBuffer[bufSize+1];
+	
+   vsprintf(textBuffer, text, args);
+	 textBuffer[bufSize]='\0';
+   va_end(args);
+	
+	 HAL_UART_Transmit(&huart2, (uint8_t *)textBuffer, bufSize+1, 1000000);
+	 memset(textBuffer,0,strlen(textBuffer));
+}
+
+
+/*
+ * Prints out formatted text to the USART, along with a newline at the end
+ * Note: Unfortunately, it is no where near so simple to pass along a va_list to another
+ * variable function, so the code is just  repeated with the newline at the end
+ *  
+ * param text: The formatted String
+ * param ...: The variable amount of values to pass along
+ */
+void println(char *text, ...) {
+	 va_list args;
+   int bufSize;
+	 char testBuffer[1]; //now needed apparently
+	
+   va_start(args, text);
+	 bufSize=vsnprintf(testBuffer,1,text,args); //need to write to the testbuffer. vsnprintf wont work with null and 0 arguments anymore for some reason
+	 testBuffer[0]='\0';
+	
+	 char textBuffer[bufSize+1];
+	
+   vsprintf(textBuffer, text, args);
+	 textBuffer[bufSize]='\0';
+   va_end(args);
+	
+	 HAL_UART_Transmit(&huart2, (uint8_t *)textBuffer, bufSize+1, 1000000);
+	 memset(textBuffer,0,strlen(textBuffer));
+	 
+	 HAL_UART_Transmit(&huart2, (uint8_t *)NEWLINE, strlen(NEWLINE), 1000000);
+}
+
+
