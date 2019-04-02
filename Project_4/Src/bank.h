@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include "semphr.h"
 #include "queue.h"
 #include "task.h"
@@ -22,7 +23,7 @@
  * int time_left_queue: tick count of when customer left queue, used for calculating metrics
  * int time_left_teller: tick count of when teller is finished with customer, used for calculating metrics
  *     and is different from the time the customer leaves the queue. Inside customer struct for extenability. 
- * int interval_time: the randomly generated time between 30 seconds and 8 minutes (system time) used for 
+ * int transaction_time: the randomly generated time between 30 seconds and 8 minutes (system time) used for 
 			 servicing a customer.
  */
 struct customer{
@@ -30,7 +31,7 @@ struct customer{
 	int time_entered_queue;
 	int time_left_queue;
 	int time_left_teller;
-	int interval_time;
+	int transaction_time;
 };
 
 /*
@@ -97,9 +98,13 @@ struct total_metrics{
 	int max_transaction_time;
 	int max_queue_depth;
 	int total_num_breaks[NUM_TELLERS];
-	float avg_break_time;
-	int max_break_time;
-	int min_break_time;
+	float avg_break_time[NUM_TELLERS];
+	int max_break_time[NUM_TELLERS];
+	int min_break_time[NUM_TELLERS];
+	int total_break_time[NUM_TELLERS];
+	int total_customer_queue_time;
+	int total_customer_teller_time;
+	int total_teller_wait_time;
 };
 /*
  * Bank struct used to represent the bank system as a whole, used within the main.c file.

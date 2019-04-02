@@ -1,7 +1,35 @@
 #include "bank.h"
 
 total_metrics m; //Total metrics struct used as a global variable in order to keep track of metrics
+SemaphoreHandle_t metric_mutex; //metrics need a mutex so that multiple threads can access it
 bank b;//Bank struct used as a global variable to represent the bank as a whole
+int simTime;
+SemaphoreHandle_t sim_time_mutex;
+
+void setSimTime(int new_sim){
+	xSemaphoreTake(sim_time_mutex, 10000);
+	simTime = new_sim;
+	xSemaphoreGive(sim_time_mutex, 10000);
+}
+
+int getSimTime(void){
+	int sim;
+	xSemaphoreTake(sim_time_mutex, 10000);
+	sim = simTime;
+	xSemaphoreGive(sim_time_mutex, 10000);
+	return sim;
+}
+
+void thread_init(void){
+
+	metric_mutex = xSemaphoreCreateBinary();
+
+	//Creating customers queue
+	b.customers = xQueueCreate(256, sizeof(customer));
+
+	xTaskCreate(bank_managing_thread, "bank_thread", 256, 0, osPriorityNormal, 0);
+}
+
 
 /*
  * Handles the operation of the bank, starting up the bank and creating customers and handling customers
@@ -13,45 +41,52 @@ bank b;//Bank struct used as a global variable to represent the bank as a whole
  */
 void bank_managing_thread(void* argument){
 
-	//Creating customers
-	b.customers = xQueueCreate(256, sizeof(customer));
-
 	//Opening bank
 	TickType_t start = xTaskGetTickCount();
 	TickType_t last_thread_wake = start;
 
-	float simTime = 0;//Time: 9:00 AM
+	setSimTime(0);//Time: 9:00 AM
 	bool open = true;//bank is now open!
 	int customers_entered = 0;
 
 	// create teller threads
 	for(int i = 0; i < NUM_TELLERS; i++){
-		xTaskCreate(teller_thread, "teller_thread", 128, 0, osPriorityNormal, 0);
+		xTaskCreate(teller_thread, "teller_thread", 128, i, osPriorityNormal, 0);
 	}
 
 	//Begin bank operation
-	while(simTime < 42000){
+	int localSim = getSimTime();
+	while(localSim < 42000){
 		int customer_interval = rand(300) + 100;
-		simTime += customer_interval;
-		if(simTime >= 42000){
+		setSimTime(localSim += customer_interval);
+		if(getSimTime() >= 42000){
 			//The bank is closed, so no new customers will be created/serviced
 			break;
 		}
 		vTaskDelayUntil(&last_thread_wake, customer_interval);
-		customer c = {customers_entered+1, last_thread_wake, 0,0, customer_interval};
+		int customer_transaction_time = rand(450) + 30;
+		customer c = {customers_entered, last_thread_wake, 0,0, customer_transaction_time};
 		xQueueSend(b.customers,&c,0);
+		xSemaphoreTake(metric_mutex, 10000);
 		if(m.max_queue_depth < uxQueueMessagesWaiting(b.customers)){
 			m.max_queue_depth = uxQueueMessagesWaiting(b.customers);
 		}
 		m.customers_served++;
-		// TODO: PRINT CONTINUOUS METRICS
+		xSemaphoreGive(metric_mutex, 10000);
+		customers_entered++;
+		display_continuous_metrics();
 		// !!!!USE vTaskDelete(NULL) FOR PRINTING THREADS!!!!
 	}
 	TickType_t end = xTaskGetTickCount();
-
 	int customers_left_in_queue = uxQueueMessagesWaiting(b.customers);
+	while(uxQueueMessagesWaiting(b.customers) > 0){
+		continue;
+	}
 
-	// TODO: Total Metrics?
+	calculate_total_metrics();
+	display_total_metrics();
+
+	vTaskDelete(NULL);
 }
 
 /*
@@ -62,23 +97,58 @@ void bank_managing_thread(void* argument){
  * return: none
  */
 void teller_thread(void* argument){
-	//teller t = {IDLE,0,0,0,0};
 	TickType_t last_thread_wake = xTaskGetTickCount();
 
+	int i = *(int*) argument; // teller number for referencing in the bank struct
+
+	int last_break = 0;
 	int break_interval = rand(3000)+3000;
-	//add break functionality roll here (idk the random chance of a break happening?)
-	for(int i = 0; i < NUM_TELLERS; i++){
-		if(b.tellers[i].teller_status == IDLE){
-			for(;;){
-				customer c;//blank customer to be replaced with popped off customer from queue
-				BaseType_t rec_customers = xQueueReceive(b.customers, &c, pdMS_TO_TICKS(break_interval-last_thread_wake));
-				b.tellers[i].teller_status = BUSY;//working on a customer right now
-				//ADD SLEEP CODE HERE I'M DUMB
-				b.tellers[i].teller_status = IDLE;//customer is done being worked on
-				b.tellers[i].num_customers += 1;
-				b.tellers[i].total_transaction_time += c.interval_time;
-			}//end for loop
-		}//end if statement
+	int break_len = rand(300) + 100;
+	for(;;){
+		int teller_wait_start = xTaskGetTickCount();
+		b.tellers[i].teller_status = IDLE;
+		customer c;//blank customer to be replaced with popped off customer from queue
+		xQueueReceive(b.customers, &c, break_interval-last_thread_wake);
+		int teller_wait_time = xTaskGetTickCount - teller_wait_start;
+		c.time_left_queue = xTaskGetTickCount() - c.time_entered_queue;
+		b.tellers[i].teller_status = BUSY;//working on a customer right now
+		vTaskDelayUntil(&last_thread_wake, c.transaction_time); //sleeps thread for length of transaction
+		b.tellers[i].teller_status = IDLE;//customer is done being worked on
+		b.tellers[i].num_customers += 1;
+		b.tellers[i].total_transaction_time += c.transaction_time;
+		int customer_time_in_queue = c.time_left_queue - c.time_entered_queue;
+
+		xSemaphoreTake(metric_mutex, 10000);
+		m.total_customer_queue_time += customer_time_in_queue;
+		if(customer_time_in_queue > m.max_customer_wait_time){
+			m.max_customer_wait_time = customer_time_in_queue;
+		}
+		m.total_customer_teller_time += c.transaction_time;
+		if(c.transaction_time > m.max_transaction_time){
+			m.max_transaction_time = c.transaction_time;
+		}
+		m.customers_served_per_teller[i]++;
+		m.total_teller_wait_time = teller_wait_time;
+		if(teller_wait_time > m.max_teller_wait_time){
+			m.max_teller_wait_time = teller_wait_time;
+		}
+		xSemaphoreGive(metric_mutex, 10000);
+		if(getSimTime() - last_break >= break_interval){
+			xSemaphoreTake(metric_mutex,10000);
+			m.total_num_breaks[i]++;
+			m.total_break_time[i] += break_len;
+			if(break_len > m.max_break_time[i]){
+				m.max_break_time[i] = break_len;
+			}
+			if(break_len < m.min_break_time[i]){
+				m.min_break_time[i] = break_len;
+			}
+			xSemaphoreGive(metric_mutex,10000);
+			break_interval = rand(3000) + 3000;
+			break_len = rand(300) + 100;
+			vTaskDelayUntil(&last_thread_wake, break_len);
+		}
+
 	}//end for loop
 }
 
@@ -95,6 +165,17 @@ int rand(int max){
 	random_number = random_number%max;
 
 	return (random_number>=0 ? (int) random_number : ((int) random_number)*-1);
+}
+
+void calculate_total_metrics(void){
+	xSemaphoreTake(metric_mutex, 10000000);
+	m.avg_customer_waiting_time = m.total_customer_queue_time/m.customers_served;
+	m.avg_teller_time = m.total_customer_teller_time/m.customers_served;
+	m.avg_teller_waiting_time = m.total_teller_wait_time/m.customers_served;
+	for(int i = 0; i < NUM_TELLERS; i++){
+		m.avg_break_time[i] = m.total_break_time[i]/m.total_num_breaks[i];
+	}
+	xSemaphoreGive(metric_mutex, 10000000);
 }
 
 /*
@@ -119,6 +200,7 @@ void display_total_metrics(void){
 	char avg_break_time[128];
 	char max_break_time[128];
 	char min_break_time[128];
+	xSemaphoreTake(metric_mutex,10000000);
 	sprintf(customers_served, "Total Customers Served: %d\r\n", m.customers_served);
 	sprintf(customers_served_teller_1, "\tTeller 1 Served %d Customers\r\n", m.customers_served_per_teller[0]);
 	sprintf(customers_served_teller_2, "\tTeller 2 Served %d Customers\r\n", m.customers_served_per_teller[1]);
@@ -134,4 +216,37 @@ void display_total_metrics(void){
 	sprintf(avg_break_time, "Average Teller Break Time: %f\r\n", m.avg_break_time);
 	sprintf(max_break_time, "Max Teller Break Time: %f\r\n", m.max_break_time);
 	sprintf(min_break_time, "Minimum Teller Break Time: %f\r\n", m.min_break_time);
+	xSemaphoreGive(metric_mutex,10000000);
+}
+
+char* teller_status_to_string(enum status teller_status){
+	if(teller_status == IDLE){
+		return "Idle";
+	}
+	else if(teller_status == BUSY){
+		return "Busy";
+	}
+	else if(teller_status == BREAK){
+		return "Break";
+	}
+	else{
+		return "Unknown";
+	}
+}
+
+void display_continuous_metrics(int sim_time){
+	char current_sim_time[128];
+	char num_customers_in_queue[128];
+	char teller_status_1[128];
+	char teller_status_2[128];
+	char teller_status_3[128];
+
+	int simHours = sim_time/60;
+	int simMin = sim_time%60;
+
+
+	sprintf(current_sim_time, "Current Simulation Time: %d:%d \r\n", simHours, simMin);
+	sprintf(teller_status_1, "Teller 1 Status: %s\r\n\tCustomers Served: %d\r\n", b.tellers[0].teller_status, b.tellers[0].num_customers);
+	sprintf(teller_status_2, "Teller 2 Status: %s\r\n\tCustomers Served: %d\r\n", b.tellers[1].teller_status, b.tellers[1].num_customers);
+	sprintf(teller_status_3, "Teller 3 Status: %s\r\n\tCustomers Served: %d\r\n", b.tellers[2].teller_status, b.tellers[2].num_customers);
 }
