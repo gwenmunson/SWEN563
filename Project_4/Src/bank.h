@@ -15,13 +15,13 @@
 #define NUM_TELLERS 3
 
 /*
- * Customer struct that's used to keep track of customers within threads. 
+ * Customer struct that's used to keep track of customers within threads.
  *
  * int id: unique ID for customer, used for keeping track of current customer + metrics for total customers
- * int time_entered_queue: tick count of when customer entered queue, used for calculating metrics 
+ * int time_entered_queue: tick count of when customer entered queue, used for calculating metrics
  * int time_left_queue: tick count of when customer left queue, used for calculating metrics
  * int time_left_teller: tick count of when teller is finished with customer, used for calculating metrics
- *     and is different from the time the customer leaves the queue. Inside customer struct for extenability. 
+ *     and is different from the time the customer leaves the queue. Inside customer struct for extenability.
  */
 struct customer{
 	int id;
@@ -35,7 +35,7 @@ struct customer{
  *
  * enum IDLE: status used for when a teller is not currently working with a customer or on break,
  *						waiting to take a customer.
- * enum BUSY: status used for when a teller is currently working with a customer. 
+ * enum BUSY: status used for when a teller is currently working with a customer.
  * enum BREAK: status used for when a teller is currently on a break from working and is unavailable to take customers.
  *             Breaks randomly occur every 30 - 60 minutes and take effect once the teller is out of BUSY status.
  *             Breaks last for 1 - 4 minutes and take 30 - 60 minutes for another break to be taken.
@@ -47,11 +47,11 @@ enum status{
 };
 
 /*
- * Teller struct used to handle the processing of customer threads alongside metrics for the bank. 
+ * Teller struct used to handle the processing of customer threads alongside metrics for the bank.
  *
- * enum status teller_status: a status enum used to signify what state the teller is currently in. Starts off as IDLE. 
+ * enum status teller_status: a status enum used to signify what state the teller is currently in. Starts off as IDLE.
  * int num_customers: number of customers that this teller has served (only counts already served customers).
- * int num_breaks: number of breaks that this teller has taken (only counts completed breaks). 
+ * int num_breaks: number of breaks that this teller has taken (only counts completed breaks).
  * int total_wait_time: total amount of ticks that this teller has been in the IDLE status.
  * int total_transaction_time: total amount of ticks that this teller has been in the BUSY status.
  * int total_break_time: total amount of ticks that this teller has been in the BREAK status.
@@ -70,14 +70,14 @@ struct teller{
  * All times are in system milliseconds (ms) instead of ticks.
  *
  * int customers_served: the total amount of customers served by all bank tellers.
- * int customers_served_per_teller: an array listing the total customers served by each respective teller. 
+ * int customers_served_per_teller: an array listing the total customers served by each respective teller.
  * float avg_customer_wait_time: the average amount of time that a customer spent in the queue awaiting service.
  * float avg_teller_time: the average amount of time needed for a teller to service a customer.
- * float avg_teller_waiting_time: the average amount of time a teller was in the IDLE status. 
- * int max_customer_wait_time: the observed maximum time that a customer spent waiting in the queue.  
- * int max_teller_wait_time: the observed maximum time that any teller was in the IDLE status. 
- * int max_transaction_time: the observed maximum time that a teller needed to service a customer. 
- * int max_queue_depth: the observed maximum size of the customer waiting queue. 
+ * float avg_teller_waiting_time: the average amount of time a teller was in the IDLE status.
+ * int max_customer_wait_time: the observed maximum time that a customer spent waiting in the queue.
+ * int max_teller_wait_time: the observed maximum time that any teller was in the IDLE status.
+ * int max_transaction_time: the observed maximum time that a teller needed to service a customer.
+ * int max_queue_depth: the observed maximum size of the customer waiting queue.
  * int total_num_breaks: an array of the total amount of breaks for each respective teller.
  * float avg_break_time: the average break time between all tellers.
  * int max_break_time: the observed maxiumum break time for all tellers.

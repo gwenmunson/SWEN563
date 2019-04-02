@@ -8,8 +8,8 @@ bank b;//Bank struct used as a global variable to represent the bank as a whole
  * until the bank closes at 4:00 PM (7 hours system runtime). The bank time always starts at 9:00 AM.
  * All metrics are recorded using the total_metrics global variable.
  *
- * param argument: A void pointer that takes in any additional arguments sent in from the main.c file. 
- * return: none 
+ * param argument: A void pointer that takes in any additional arguments sent in from the main.c file.
+ * return: none
  */
 void bank_managing_thread(void* argument){
 
@@ -24,15 +24,20 @@ void bank_managing_thread(void* argument){
 	bool open = true;//bank is now open!
 	int customers_entered = 0;
 
+	// create teller threads
+	for(int i = 0; i < NUM_TELLERS; i++){
+		xTaskCreate(teller_thread, "teller_thread", 128, 0, osPriorityNormal, 0);
+	}
+
 	//Begin bank operation
-	while(simTime < 420){
+	while(simTime < 42000){
 		int customer_interval = rand(300) + 100;
 		simTime += customer_interval;
-		if(simTime >= 420){
+		if(simTime >= 42000){
 			//The bank is closed, so no new customers will be created/serviced
 			break;
 		}
-		vTaskDelayUntil(&last_thread_wake, pdMS_TO_TICKS(customer_interval));
+		vTaskDelayUntil(&last_thread_wake, customer_interval);
 		customer c = {customers_entered+1, last_thread_wake, 0,0};
 		xQueueSend(b.customers,&c,0);
 		if(m.max_queue_depth < uxQueueMessagesWaiting(b.customers)){
@@ -51,10 +56,10 @@ void bank_managing_thread(void* argument){
 
 /*
  * Creates a new teller thread for servicing a customer. The amount of time needed to serve a customer is
- * generated here instead of customer creation itself. 
+ * generated here instead of customer creation itself.
  *
- * param argument: A void pointer that takes in any additional arguments sent in from the main.c file. 
- * return: none 
+ * param argument: A void pointer that takes in any additional arguments sent in from the main.c file.
+ * return: none
  */
 void teller_thread(void* argument){
 	teller t = {IDLE,0,0,0,0};
@@ -63,12 +68,12 @@ void teller_thread(void* argument){
 	int break_interval = rand(3000)+3000;
 	for(;;){
 		customer c;
-		BaseType_t rec_customers = xQueueReceive(b.customers, &c, pdMS_TO_TICKS(break_interval-last_thread_wake));
+		BaseType_t rec_customers = xQueueReceive(b.customers, &c, break_interval-last_thread_wake);
 	}
 }
 
 /*
- * Random Number Generator using freeRTOS's provided RNG code. Starts at 0. 
+ * Random Number Generator using freeRTOS's provided RNG code. Starts at 0.
  *
  * param max: the max value that a random number can be (range is 0 to max).
  * return: random number generated
@@ -82,10 +87,10 @@ int rand(int max){
 }
 
 /*
- * Handles printing out total metrics. May be reworked in the future, so this is more placeholder code. 
+ * Handles printing out total metrics. May be reworked in the future, so this is more placeholder code.
  *
  * param: none
- * return: none 
+ * return: none
  */
 void display_total_metrics(void){
 	char customers_served[128];
