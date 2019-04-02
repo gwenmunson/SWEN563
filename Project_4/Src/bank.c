@@ -355,6 +355,3 @@ void print(char* text){
 	HAL_UART_Transmit(&huart2, (uint8_t *)text, strlen(text), 1000000);
 	xSemaphoreGive(HAL_mutex);
 }
-
-
-
