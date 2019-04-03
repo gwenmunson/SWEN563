@@ -110,18 +110,21 @@ void bank_managing_thread(void* argument){
 	int localSim = getSimTime();
 	do{
 		int customer_interval = random(300) + 100;
-		//osDelay(customer_interval);
-		vTaskDelayUntil(&last_thread_wake, customer_interval);
 		setSimTime(localSim += customer_interval);
 		if(getSimTime() >= 42000){
 			open = false;
+			//break;
 		}
+
+		//osDelay(customer_interval);
+		//last_thread_wake = xTaskGetTickCount();
+		vTaskDelayUntil(&last_thread_wake, customer_interval);
 		int customer_transaction_time = random(450) + 30;
 		struct customer c = {customers_entered, last_thread_wake, 0,0, customer_transaction_time};
 		xQueueSend(b.customers,&c,0);
-		char test[20];
-		sprintf(test, "Customers in queue: %d\r\n", (int)uxQueueMessagesWaiting(b.customers));
-		print(test);
+		//char test[20];
+		//sprintf(test, "Customers in queue: %d\r\n", (int)uxQueueMessagesWaiting(b.customers));
+		//print(test);
 		xSemaphoreTake(metric_mutex, 10000);
 		if(m.max_queue_depth < uxQueueMessagesWaiting(b.customers)){
 			m.max_queue_depth = uxQueueMessagesWaiting(b.customers);
@@ -129,7 +132,7 @@ void bank_managing_thread(void* argument){
 		xSemaphoreGive(metric_mutex);
 		customers_entered++;
 		display_continuous_metrics(getSimTime());
-	}while(open);
+	}while(open == true);
 	TickType_t end = xTaskGetTickCount();
 	xSemaphoreTake(metric_mutex, 10000);
 	m.customers_served = customers_entered;
@@ -141,6 +144,16 @@ void bank_managing_thread(void* argument){
 		if(current_customers < customers_left_in_queue - 3){
 			display_continuous_metrics(getSimTime());
 			customers_left_in_queue = current_customers;
+		}
+		bool teller_busy[3] = {true, true, true};
+
+		for(int j = 0; j<NUM_TELLERS; j++){
+			if(b.tellers[j].teller_status != BUSY){
+				teller_busy[j] = false;
+			}
+		}
+		if(customers_left_in_queue <= 0 && !teller_busy[0]&& !teller_busy[1]&& !teller_busy[2] ){
+			break;
 		}
 	}
 
@@ -165,10 +178,9 @@ void teller_thread(void* argument){
 
 	TickType_t last_thread_wake = xTaskGetTickCount();
 
-	int last_break = 0;
-	int break_interval = random(3000)+3000;
-	int break_len = random(300) + 100;
-	int break_time_at = last_thread_wake + break_interval;
+	float break_interval = random(3000)+3000;
+	float break_len = random(300) + 100;
+	float break_time_at = last_thread_wake + break_interval;
 	for(;;){
 		//int teller_wait_start = xTaskGetTickCount();
 		b.tellers[i].teller_status = IDLE;
@@ -181,7 +193,9 @@ void teller_thread(void* argument){
 				xSemaphoreTake(metric_mutex, 10000);
 				m.total_num_breaks[i]++;
 				xSemaphoreGive(metric_mutex);
-				vTaskDelayUntil(&last_thread_wake,break_len);
+				osDelay(break_len);
+				last_thread_wake = xTaskGetTickCount();
+				//vTaskDelayUntil(&last_thread_wake,break_len);
 				b.tellers[i].teller_status = IDLE;
 				xSemaphoreTake(metric_mutex, 10000);
 				m.total_break_time[i] += break_len;
@@ -201,24 +215,37 @@ void teller_thread(void* argument){
 			}
 		}
 
-		int teller_wait_time = xTaskGetTickCount() - last_thread_wake;
+		char display[64];
+		uint32_t teller_wait_time = xTaskGetTickCount() - last_thread_wake;
 		b.tellers[i].num_customers += 1;
 		b.tellers[i].teller_status = BUSY;//working on a customer right now
 
-		int customer_time_in_queue = xTaskGetTickCount() - c.time_entered_queue;
-		int transaction_time = random(450) + 30;
+		uint32_t dequeue_time = xTaskGetTickCount();
+		uint32_t customer_time_in_queue = dequeue_time - c.time_entered_queue;
+		sprintf(display, "enqueue_time: %d\r\n", c.time_entered_queue);
+		print(display);
+		sprintf(display, "dequeue_time: %d\r\n", dequeue_time);
+		print(display);
+		sprintf(display, "Customer Time in Queue: %d\r\n", customer_time_in_queue);
+		print(display);
+		uint32_t transaction_time = random(450) + 30;
 		b.tellers[i].total_transaction_time += transaction_time;
-		//osDelay(transaction_time);
-		vTaskDelayUntil(&last_thread_wake, transaction_time); //sleeps thread for length of transaction
+		osDelay(transaction_time);
+		last_thread_wake = xTaskGetTickCount();
+		//vTaskDelayUntil(&last_thread_wake, transaction_time); //sleeps thread for length of transaction
 
 		xSemaphoreTake(metric_mutex, 10000);
+		
 		m.total_customer_queue_time += customer_time_in_queue;
+		
+		//sprintf(display, "Max customer wait time: %d\r\n", m.max_customer_wait_time);
+		//print(display);
 		if(customer_time_in_queue > m.max_customer_wait_time){
 			m.max_customer_wait_time = customer_time_in_queue;
 		}
-		m.total_customer_teller_time += c.transaction_time;
-		if(c.transaction_time > m.max_transaction_time){
-			m.max_transaction_time = c.transaction_time;
+		m.total_customer_teller_time += transaction_time;
+		if(transaction_time > m.max_transaction_time){
+			m.max_transaction_time = transaction_time;
 		}
 		m.customers_served_per_teller[i]++;
 		m.total_teller_wait_time = teller_wait_time;
@@ -242,12 +269,13 @@ void teller_thread(void* argument){
 		//	vTaskDelayUntil(&last_thread_wake, break_len);
 		//}
 
-		//if(getSimTime() >= 42000 && uxQueueMessagesWaiting(b.customers) == 0){
-		//	//The bank is closed, so no new customers will be created/serviced
-		//	break;
-		//}
+		if(getSimTime() >= 42000 && uxQueueMessagesWaiting(b.customers) == 0){
+			//The bank is closed, so no new customers will be created/serviced
+			b.tellers[i].teller_status = IDLE;
+			break;
+		}
 	}//end for loop
-	//while(1){}
+	while(1){}
 }
 
 
@@ -271,28 +299,19 @@ void calculate_total_metrics(void){
 	print(display_message);
 
 	xSemaphoreTake(metric_mutex, 10000000);
-	sprintf(display_message, "Got mutex\r\n");
+	m.avg_customer_waiting_time = (m.total_customer_queue_time/(float)m.customers_served)/100.0;
+	//sprintf(display_message, "Avg cust waiting time: %f\r\n", m.avg_customer_waiting_time);
 	//print(display_message);
-
-	sprintf(display_message, "Customers served: %d\r\n", m.customers_served);
+	m.avg_teller_time = (m.total_customer_teller_time/(float)m.customers_served)/100.0;
+	//sprintf(display_message, "Avg teller time: %f\r\n", m.avg_teller_time);
 	//print(display_message);
-	m.avg_customer_waiting_time = m.total_customer_queue_time/m.customers_served;
-	sprintf(display_message, "Avg cust waiting time: %f\r\n", m.avg_customer_waiting_time);
+	m.avg_teller_waiting_time = (m.total_teller_wait_time/(float)m.customers_served)/100.0;
+	//sprintf(display_message, "Avg teller waiting time: %f\r\n", m.avg_teller_waiting_time);
 	//print(display_message);
-	m.avg_teller_time = m.total_customer_teller_time/m.customers_served;
-	sprintf(display_message, "Avg teller time: %f\r\n", m.avg_teller_time);
-	//print(display_message);
-	m.avg_teller_waiting_time = m.total_teller_wait_time/m.customers_served;
-	sprintf(display_message, "Avg teller waiting time: %f\r\n", m.avg_teller_waiting_time);
-	//print(display_message);
-	//for(int i = 0; i < NUM_TELLERS; i++){
-	//	m.avg_break_time[i] = m.total_break_time[i]/m.total_num_breaks[i];
-	//}
-	sprintf(display_message, "Giving back mutex\r\n");
-	//print(display_message);
+	for(int i = 0; i < NUM_TELLERS; i++){
+		m.avg_break_time[i] = m.total_break_time[i]/(float)m.total_num_breaks[i];
+	}
 	xSemaphoreGive(metric_mutex);
-	sprintf(display_message, "Gave back mutex\r\n");
-	//print(display_message);
 }
 
 /*
@@ -302,10 +321,11 @@ void calculate_total_metrics(void){
  * return: none
  */
 void display_total_metrics(void){
-	char display_message[32];
+	char display_message[64];
 	sprintf(display_message, "Printing Total Metrics\r\n");
 	print(display_message);
 
+	/*
 	char customers_served[64];
 	char customers_served_teller_1[64];
 	char customers_served_teller_2[64];
@@ -317,39 +337,66 @@ void display_total_metrics(void){
 	char max_teller_wait_time[64];
 	char max_transaction_time[64];
 	char max_queue_depth[64];
-	char total_num_breaks[64];
-	char avg_break_time[64];
-	char max_break_time[64];
-	char min_break_time[64];
+	char total_num_breaks1[64];
+	char total_num_breaks2[64];
+	char total_num_breaks3[64];
+	char avg_break_time1[64];
+	char avg_break_time2[64];
+	char avg_break_time3[64];
+	char max_break_time1[64];
+	char max_break_time2[64];
+	char max_break_time3[64];
+	char min_break_time1[64];
+	char min_break_time2[64];
+	char min_break_time3[64];
+	*/
 	xSemaphoreTake(metric_mutex,10000000);
-	sprintf(display_message, "Got mutex\r\n");
-	//print(display_message);
-	sprintf(customers_served, "Total Customers Served: %d\r\n", m.customers_served);
-	print(customers_served);
-	sprintf(customers_served_teller_1, "\tTeller 1 Served %d Customers\r\n", m.customers_served_per_teller[0]);
-	print(customers_served_teller_1);
-	sprintf(customers_served_teller_2, "\tTeller 2 Served %d Customers\r\n", m.customers_served_per_teller[1]);
-	print(customers_served_teller_2);
-	sprintf(customers_served_teller_3, "\tTeller 3 Served %d Customers\r\n", m.customers_served_per_teller[2]);
-	print(customers_served_teller_3);
-	sprintf(avg_customer_waiting_time, "Average Customer Waiting Time: %f\r\n", m.avg_customer_waiting_time);
-	print(avg_customer_waiting_time);
-	sprintf(avg_teller_time, "Average Time Tellers Spent Helping Customers: %f\r\n", m.avg_teller_time);
-	print(avg_teller_time);
-	sprintf(avg_teller_waiting_time, "Average Time Tellers Spent Waiting: %f\r\n", m.avg_teller_waiting_time);
-	print(avg_teller_waiting_time);
-	sprintf(max_customer_wait_time, "Max Customer Wait Time: %d\r\n", m.max_customer_wait_time);
-	print(max_customer_wait_time);
-	sprintf(max_teller_wait_time, "Max Time Tellers Were Waiting: %d\r\n", m.max_teller_wait_time);
-	print(max_teller_wait_time);
-	sprintf(max_transaction_time, "Max Transaction Time: %d\r\n", m.max_transaction_time);
-	print(max_transaction_time);
-	sprintf(max_queue_depth, "Max Queue Depth: %d\r\n", m.max_queue_depth);
-	print(max_queue_depth);
-	//sprintf(total_num_breaks, "Total Number of Teller Breaks: %d\r\n", m.total_num_breaks);
-	//sprintf(avg_break_time, "Average Teller Break Time: %f\r\n", m.avg_break_time);
-	//sprintf(max_break_time, "Max Teller Break Time: %f\r\n", m.max_break_time);
-	//sprintf(min_break_time, "Minimum Teller Break Time: %f\r\n", m.min_break_time);
+	sprintf(display_message, "Total Customers Served: %d\r\n", m.customers_served);
+	print(display_message);
+	sprintf(display_message, "\tTeller 1 Served %d Customers\r\n", m.customers_served_per_teller[0]);
+	print(display_message);
+	sprintf(display_message, "\tTeller 2 Served %d Customers\r\n", m.customers_served_per_teller[1]);
+	print(display_message);
+	sprintf(display_message, "\tTeller 3 Served %d Customers\r\n", m.customers_served_per_teller[2]);
+	print(display_message);
+	sprintf(display_message, "Average Customer Waiting Time: %f\r\n", m.avg_customer_waiting_time);
+	print(display_message);
+	sprintf(display_message, "Average Time Tellers Spent Helping Customers: %f\r\n", m.avg_teller_time);
+	print(display_message);
+	sprintf(display_message, "Average Time Tellers Spent Waiting: %f\r\n", m.avg_teller_waiting_time);
+	print(display_message);
+	sprintf(display_message, "Max Customer Wait Time: %f\r\n", m.max_customer_wait_time/100.0);
+	print(display_message);
+	sprintf(display_message, "Max Time Tellers Were Waiting: %f\r\n", m.max_teller_wait_time/100.0);
+	print(display_message);
+	sprintf(display_message, "Max Transaction Time: %f\r\n", m.max_transaction_time/100.0);
+	print(display_message);
+	sprintf(display_message, "Max Queue Depth: %d\r\n", m.max_queue_depth);
+	print(display_message);
+	sprintf(display_message, "Total Number Breaks for Teller 1: %d\r\n", m.total_num_breaks[0]);
+	print(display_message);
+	sprintf(display_message, "Total Number Breaks for Teller 2: %d\r\n", m.total_num_breaks[1]);
+	print(display_message);
+	sprintf(display_message, "Total Number Breaks for Teller 3: %d\r\n", m.total_num_breaks[2]);
+	print(display_message);
+	sprintf(display_message, "Average Teller 1 Break Time: %f\r\n", m.avg_break_time[0]/100.0);
+	print(display_message);
+	sprintf(display_message, "Average Teller 2 Break Time: %f\r\n", m.avg_break_time[1]/100.0);
+	print(display_message);
+	sprintf(display_message, "Average Teller 3 Break Time: %f\r\n", m.avg_break_time[2]/100.0);
+	print(display_message);
+	sprintf(display_message, "Max Teller 1 Break Time: %f\r\n", m.max_break_time[0]/100.0);
+	print(display_message);
+	sprintf(display_message, "Max Teller 2 Break Time: %f\r\n", m.max_break_time[1]/100.0);
+	print(display_message);
+	sprintf(display_message, "Max Teller 3 Break Time: %f\r\n", m.max_break_time[2]/100.0);
+	print(display_message);
+	sprintf(display_message, "Minimum Teller 1 Break Time: %f\r\n", m.min_break_time[0]/100.0);
+	print(display_message);
+	sprintf(display_message, "Minimum Teller 2 Break Time: %f\r\n", m.min_break_time[1]/100.0);
+	print(display_message);
+	sprintf(display_message, "Minimum Teller 3 Break Time: %f\r\n", m.min_break_time[2]/100.0);
+	print(display_message);
 	xSemaphoreGive(metric_mutex);
 
 }

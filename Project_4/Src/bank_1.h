@@ -15,6 +15,7 @@
 #include <stdbool.h>
 
 #define NUM_TELLERS 3
+#define CONVERSION_FACTOR 100
 
 /*
  * Customer struct that's used to keep track of customers within threads.
@@ -29,7 +30,7 @@
  */
 struct customer{
 	int id;
-	int time_entered_queue;
+	uint32_t time_entered_queue;
 	int time_left_queue;
 	int time_left_teller;
 	int transaction_time;
@@ -91,21 +92,21 @@ struct teller{
 struct total_metrics{
 	int customers_served;
 	int customers_served_per_teller[NUM_TELLERS];
-	float avg_customer_waiting_time;
-	float avg_teller_time;
-	float avg_teller_waiting_time;
-	int max_customer_wait_time;
-	int max_teller_wait_time;
-	int max_transaction_time;
+	double avg_customer_waiting_time;
+	double avg_teller_time;
+	double avg_teller_waiting_time;
+	uint32_t max_customer_wait_time;
+	uint32_t max_teller_wait_time;
+	uint32_t max_transaction_time;
 	int max_queue_depth;
 	int total_num_breaks[NUM_TELLERS];
-	float avg_break_time[NUM_TELLERS];
-	int max_break_time[NUM_TELLERS];
-	int min_break_time[NUM_TELLERS];
-	int total_break_time[NUM_TELLERS];
-	int total_customer_queue_time;
-	int total_customer_teller_time;
-	int total_teller_wait_time;
+	double avg_break_time[NUM_TELLERS];
+	uint32_t max_break_time[NUM_TELLERS];
+	uint32_t min_break_time[NUM_TELLERS];
+	uint32_t total_break_time[NUM_TELLERS];
+	uint32_t total_customer_queue_time;
+	uint32_t total_customer_teller_time;
+	uint32_t total_teller_wait_time;
 };
 /*
  * Bank struct used to represent the bank system as a whole, used within the main.c file.
