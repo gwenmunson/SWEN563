@@ -78,7 +78,7 @@ void thread_init_1(void){
 	xTaskCreate(bank_managing_thread, "bank_thread", 128, 0, osPriorityNormal, 0);
 	// create teller threads
 	for(int i = 0; i < NUM_TELLERS; i++){
-		id[i] = i+1;
+		id[i] = i;
 		xTaskCreate(teller_thread, "teller_thread", 128, (void*) &id[i], osPriorityNormal, 0);
 	}
 }
@@ -110,13 +110,12 @@ void bank_managing_thread(void* argument){
 	int localSim = getSimTime();
 	do{
 		int customer_interval = random(300) + 100;
+		//osDelay(customer_interval);
+		vTaskDelayUntil(&last_thread_wake, customer_interval);
 		setSimTime(localSim += customer_interval);
 		if(getSimTime() >= 42000){
-			//The bank is closed, so no new customers will be created/serviced
-			break;
+			open = false;
 		}
-		osDelay(customer_interval);
-		//vTaskDelayUntil(&last_thread_wake, customer_interval);
 		int customer_transaction_time = random(450) + 30;
 		struct customer c = {customers_entered, last_thread_wake, 0,0, customer_transaction_time};
 		xQueueSend(b.customers,&c,0);
@@ -127,15 +126,22 @@ void bank_managing_thread(void* argument){
 		if(m.max_queue_depth < uxQueueMessagesWaiting(b.customers)){
 			m.max_queue_depth = uxQueueMessagesWaiting(b.customers);
 		}
-		m.customers_served++;
 		xSemaphoreGive(metric_mutex);
 		customers_entered++;
 		display_continuous_metrics(getSimTime());
-	}while(localSim < 42000);
+	}while(open);
 	TickType_t end = xTaskGetTickCount();
-	//int customers_left_in_queue = uxQueueMessagesWaiting(b.customers);
-	while(uxQueueMessagesWaiting(b.customers) > 0){
-		continue;
+	xSemaphoreTake(metric_mutex, 10000);
+	m.customers_served = customers_entered;
+	xSemaphoreGive(metric_mutex);
+
+	int customers_left_in_queue = uxQueueMessagesWaiting(b.customers);
+	while(1){
+		int current_customers = (int)uxQueueMessagesWaiting(b.customers);
+		if(current_customers < customers_left_in_queue - 3){
+			display_continuous_metrics(getSimTime());
+			customers_left_in_queue = current_customers;
+		}
 	}
 
 	calculate_total_metrics();
@@ -151,32 +157,59 @@ void bank_managing_thread(void* argument){
  * return: none
  */
 void teller_thread(void* argument){
-	int i = *(int*) argument - 1; // teller number for referencing in the bank struct
+	int i = *(int*) argument; // teller number for referencing in the bank struct
 
-	char enter_teller[32];
-	sprintf(enter_teller, "Entering teller thread %d\r\n", i+1);
-	print(enter_teller);
+	//char enter_teller[32];
+	//sprintf(enter_teller, "Entering teller thread %d\r\n", i+1);
+	//print(enter_teller);
 
 	TickType_t last_thread_wake = xTaskGetTickCount();
 
 	int last_break = 0;
 	int break_interval = random(3000)+3000;
 	int break_len = random(300) + 100;
+	int break_time_at = last_thread_wake + break_interval;
 	for(;;){
-		int teller_wait_start = xTaskGetTickCount();
+		//int teller_wait_start = xTaskGetTickCount();
 		b.tellers[i].teller_status = IDLE;
 		struct customer c;//blank customer to be replaced with popped off customer from queue
-		xQueueReceive(b.customers, &c, 100000000);
+		BaseType_t rec = pdTRUE;
+		for(;;){
+			rec = xQueueReceive(b.customers, &c, break_time_at - last_thread_wake);
+			if(rec != pdTRUE){
+				b.tellers[i].teller_status = BREAK;
+				xSemaphoreTake(metric_mutex, 10000);
+				m.total_num_breaks[i]++;
+				xSemaphoreGive(metric_mutex);
+				vTaskDelayUntil(&last_thread_wake,break_len);
+				b.tellers[i].teller_status = IDLE;
+				xSemaphoreTake(metric_mutex, 10000);
+				m.total_break_time[i] += break_len;
+				if(break_len > m.max_break_time[i]){
+					m.max_break_time[i] = break_len;
+				}
+				if(break_len < m.min_break_time[i]){
+					m.min_break_time[i] = break_len;
+				}
+				xSemaphoreGive(metric_mutex);
+				break_interval = random(3000)+3000;
+				break_len = random(300)+100;
+				break_time_at = last_thread_wake + break_interval;
+			}
+			else{
+				break;
+			}
+		}
+
+		int teller_wait_time = xTaskGetTickCount() - last_thread_wake;
 		b.tellers[i].num_customers += 1;
-		int teller_wait_time = xTaskGetTickCount() - teller_wait_start;
-		c.time_left_queue = xTaskGetTickCount() - c.time_entered_queue;
 		b.tellers[i].teller_status = BUSY;//working on a customer right now
+
+		int customer_time_in_queue = xTaskGetTickCount() - c.time_entered_queue;
 		int transaction_time = random(450) + 30;
-		osDelay(transaction_time);
-		//vTaskDelayUntil(&last_thread_wake, c.transaction_time); //sleeps thread for length of transaction
-		b.tellers[i].teller_status = IDLE;//customer is done being worked on
 		b.tellers[i].total_transaction_time += transaction_time;
-		int customer_time_in_queue = c.time_left_queue - c.time_entered_queue;
+		//osDelay(transaction_time);
+		vTaskDelayUntil(&last_thread_wake, transaction_time); //sleeps thread for length of transaction
 
 		xSemaphoreTake(metric_mutex, 10000);
 		m.total_customer_queue_time += customer_time_in_queue;
@@ -187,7 +220,7 @@ void teller_thread(void* argument){
 		if(c.transaction_time > m.max_transaction_time){
 			m.max_transaction_time = c.transaction_time;
 		}
-		m.customers_served_per_teller[i] = b.tellers[i].num_customers;
+		m.customers_served_per_teller[i]++;
 		m.total_teller_wait_time = teller_wait_time;
 		if(teller_wait_time > m.max_teller_wait_time){
 			m.max_teller_wait_time = teller_wait_time;
@@ -209,12 +242,12 @@ void teller_thread(void* argument){
 		//	vTaskDelayUntil(&last_thread_wake, break_len);
 		//}
 
-		if(getSimTime() >= 42000 && uxQueueMessagesWaiting(b.customers) == 0){
-			//The bank is closed, so no new customers will be created/serviced
-			break;
-		}
+		//if(getSimTime() >= 42000 && uxQueueMessagesWaiting(b.customers) == 0){
+		//	//The bank is closed, so no new customers will be created/serviced
+		//	break;
+		//}
 	}//end for loop
-	while(1){}
+	//while(1){}
 }
 
 
