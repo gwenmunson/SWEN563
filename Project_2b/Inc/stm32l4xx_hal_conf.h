@@ -40,7 +40,6 @@
  extern "C" {
 #endif
 
-#include "main.h" 
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/
 
@@ -63,13 +62,13 @@
 /*#define HAL_DSI_MODULE_ENABLED   */
 /*#define HAL_FIREWALL_MODULE_ENABLED   */
 /*#define HAL_GFXMMU_MODULE_ENABLED   */
-#define HAL_HCD_MODULE_ENABLED
+/*#define HAL_HCD_MODULE_ENABLED   */
 /*#define HAL_HASH_MODULE_ENABLED   */
 /*#define HAL_I2S_MODULE_ENABLED   */
 /*#define HAL_IRDA_MODULE_ENABLED   */
 /*#define HAL_IWDG_MODULE_ENABLED   */
 /*#define HAL_LTDC_MODULE_ENABLED   */
-#define HAL_LCD_MODULE_ENABLED
+/*#define HAL_LCD_MODULE_ENABLED   */
 /*#define HAL_LPTIM_MODULE_ENABLED   */
 /*#define HAL_NAND_MODULE_ENABLED   */
 /*#define HAL_NOR_MODULE_ENABLED   */
@@ -78,14 +77,14 @@
 /*#define HAL_OSPI_MODULE_ENABLED   */
 /*#define HAL_PCD_MODULE_ENABLED   */
 /*#define HAL_QSPI_MODULE_ENABLED   */
-#define HAL_QSPI_MODULE_ENABLED
+/*#define HAL_QSPI_MODULE_ENABLED   */
 #define HAL_RNG_MODULE_ENABLED
 /*#define HAL_RTC_MODULE_ENABLED   */
 /*#define HAL_SAI_MODULE_ENABLED   */
 /*#define HAL_SD_MODULE_ENABLED   */
 /*#define HAL_SMBUS_MODULE_ENABLED   */
 /*#define HAL_SMARTCARD_MODULE_ENABLED   */
-#define HAL_SPI_MODULE_ENABLED
+/*#define HAL_SPI_MODULE_ENABLED   */
 /*#define HAL_SRAM_MODULE_ENABLED   */
 /*#define HAL_SWPMI_MODULE_ENABLED   */
 #define HAL_TIM_MODULE_ENABLED
@@ -93,6 +92,7 @@
 #define HAL_UART_MODULE_ENABLED
 /*#define HAL_USART_MODULE_ENABLED   */
 /*#define HAL_WWDG_MODULE_ENABLED   */
+/*#define HAL_EXTI_MODULE_ENABLED   */
 #define HAL_GPIO_MODULE_ENABLED
 #define HAL_I2C_MODULE_ENABLED
 #define HAL_DMA_MODULE_ENABLED
@@ -193,7 +193,7 @@
 #define  VDD_VALUE					  ((uint32_t)3300U) /*!< Value of VDD in mv */           
 #define  TICK_INT_PRIORITY            ((uint32_t)0U)    /*!< tick interrupt priority */            
 #define  USE_RTOS                     0U     
-#define  PREFETCH_ENABLE              1U
+#define  PREFETCH_ENABLE              0U
 #define  INSTRUCTION_CACHE_ENABLE     1U
 #define  DATA_CACHE_ENABLE            1U
 
@@ -222,6 +222,10 @@
   #include "stm32l4xx_hal_rcc.h"
   #include "stm32l4xx_hal_rcc_ex.h"
 #endif /* HAL_RCC_MODULE_ENABLED */
+
+#ifdef HAL_EXTI_MODULE_ENABLED
+  #include "stm32l4xx_hal_exti.h"
+#endif /* HAL_EXTI_MODULE_ENABLED */
 
 #ifdef HAL_GPIO_MODULE_ENABLED
   #include "stm32l4xx_hal_gpio.h"
@@ -414,9 +418,9 @@
   *         If expr is true, it returns no value.
   * @retval None
   */
-  #define assert_param(expr) ((expr) ? (void)0U : assert_failed((uint8_t *)__FILE__, __LINE__))
+  #define assert_param(expr) ((expr) ? (void)0U : assert_failed((char *)__FILE__, __LINE__))
 /* Exported functions ------------------------------------------------------- */
-  void assert_failed(uint8_t* file, uint32_t line);
+  void assert_failed(char *file, uint32_t line);
 #else
   #define assert_param(expr) ((void)0U)
 #endif /* USE_FULL_ASSERT */
