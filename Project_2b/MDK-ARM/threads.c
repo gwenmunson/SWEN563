@@ -1,14 +1,15 @@
-#include "stm32l476xx.h"
+//#include "stm32l476xx.h"
 //#include "SysClock.h"
-#include "stm32l4xx_hal_uart.h"
-#include "timers.h"
-#include "gpio.h"
-#include "servo.h"
+//#include "stm32l4xx_hal_uart.h"
+//#include "timers.h"
+//#include "gpio.h"
+//#include "servo.h"
 #include "recipe.h"
-#include "LED.h"
+//#include "LED.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 
 #define OPCODE_MASK 0xE0
@@ -28,10 +29,9 @@ int new_command[] = {0,0};
 enum states servo_state[] = {recipe_paused, recipe_paused};
 int position[] = {3,3};
 
-SemaphoreHandle_t  servo_mutex;  
-servo systemServos[2]; 
-servo servo1 = {noop, false};
-servo servo2 = {noop, false};
+SemaphoreHandle_t  servo_mutex;
+servo systemServos[2];
+struct commands servo_commands = {{noop,noop},{false,false}};
 systemServos[0] = servo1;
 systemServos[1] = servo2;
 
@@ -41,7 +41,7 @@ typedef struct recipes{
 
 typedef struct servos{
 	enum user_events servo_command;
-	bool command_flag; 
+	bool command_flag;
 }servo;
 
 
@@ -62,7 +62,7 @@ void ParseCommand(uint8_t read_command);
 void GetCommandsTimer(void);
 void process_event(enum user_events one_event, enum states current_state, int servo_num);
 
-void recipe_thread (void* argument){
+void parse_recipe (int op){
 	switch(op){
 			case MOV:
 				if(args >= 0 && args <= 5){
@@ -105,6 +105,36 @@ void recipe_thread (void* argument){
 	}
 }
 
+bool IsNewCommand(int i){
+	xSemaphoreTake(servo_mutex, 10000);
+	bool is_updated = servo_commands.updated[i];
+	xSemaphoreGive(servo_mutex);
+}
+
+void servo_thread(void* argument){
+	int i = *(int *) argument;
+	for(;;){
+		if(IsNewCommand(i)){
+			user_events command = servo_commands.event[i];
+			process_event(command, servo_state[i], i);
+		}
+		if(servo_state[i] == recipe_running){
+		   if(wait_count[i] > 0){
+		   	wait_count[i]--;
+		   	continue;
+		   }
+		   int recipe_command = rec_list[i].recipe[program_counter[i]];
+		   int op = recipe_command & OPCODE_MASK;
+		   int args = recipe_command & ARGS_MASK;
+		   parse_recipe(op);
+		   program_counter[i]++;
+		}
+		if(i == 0){
+			StateLEDs(servo_state[0]);
+		}
+	}
+}
+
 int main(void){
 	System_Clock_Init();
 	LED_Init();
@@ -112,7 +142,7 @@ int main(void){
 	Timer5_init();
 	GPIO_Init();
 	UART2_Init();
-    
+
 	rec_list[0].recipe = loop_err_recipe;
 	rec_list[1].recipe = test_recipe;
 
@@ -120,75 +150,6 @@ int main(void){
 	USART_Write(USART2, prompt, 4);
 	TIM5->CR1 |= TIM_CR1_CEN;
 	TIM2->CR1 |= TIM_CR1_CEN;
-	
-		for(;;){
-
-		CaptureCommands();
-		for(int i = 0; i<2; i++){
-			if(new_command[i] == 1){
-				//this needs to be changed - commenting out for the time being
-				//process_event(user_command[i], servo_state[i], i);
-				xSemaphoreTake(servo_mutex, ~0);
-				systemServos[i].servo_command = new_command[i];
-				xSemaphoreGive(servo_mutex);
-				new_command[i] = 0;
-			}
-			if(servo_state[i] == recipe_running){
-				if(wait_count[i] > 0){
-					wait_count[i]--;
-					continue;
-				}
-				int recipe_command = rec_list[i].recipe[program_counter[i]];
-				int op = recipe_command & OPCODE_MASK;
-				int args = recipe_command & ARGS_MASK;
-				switch(op){
-					case MOV:
-						if(args >= 0 && args <= 5){
-              wait_count[i] = SERVO_DELAY * (abs(position[i] - args));
-							position[i] = args;
-							SetPosition(i, args);
-
-						}
-						else{
-							servo_state[i] = recipe_cmd_err;
-						}
-						break;
-					case WAIT:
-						wait_count[i] = args+1;
-						break;
-					case LOOP:
-						if(in_loop[i] == 1){
-							servo_state[i] = recipe_nested_err;
-						}
-						else{
-							loop_counter[i] = args;
-							in_loop[i] = 1;
-							loop_instruction[i] = program_counter[i];
-						}
-						break;
-					case END_LOOP:
-						if(loop_counter[i] > 0){
-							loop_counter[i]--;
-							program_counter[i] = loop_instruction[i];
-						}
-						else{
-							in_loop[i] = 0;
-						}
-						break;
-					case RECIPE_END:
-						servo_state[i] = recipe_done;
-						break;
-					default:
-						break;
-				}
-				program_counter[i]++;
-			}
-		}
-		StateLEDs(servo_state[0]);
-		GetCommandsTimer();
-		while(timeout==0);
-		timeout = 0;
-	}
 }
 
 void CaptureCommands(void){
@@ -253,7 +214,7 @@ void TIM2_IRQHandler(){
 		timeout = 1;
 	}
 	if(systemServos[0].command_flag || systemServos[1].command_flag){
-		
+
 	}
 }
 
