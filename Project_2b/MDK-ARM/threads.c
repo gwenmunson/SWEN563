@@ -28,9 +28,22 @@ int new_command[] = {0,0};
 enum states servo_state[] = {recipe_paused, recipe_paused};
 int position[] = {3,3};
 
+SemaphoreHandle_t  servo_mutex;  
+servo systemServos[2]; 
+servo servo1 = {noop, false};
+servo servo2 = {noop, false};
+systemServos[0] = servo1;
+systemServos[1] = servo2;
+
 typedef struct recipes{
-    unsigned char* recipe;
+  unsigned char* recipe;
 }recipes;
+
+typedef struct servos{
+	enum user_events servo_command;
+	bool command_flag; 
+}servo;
+
 
 unsigned char test_recipe[] = {MOV|0, MOV|5, MOV|0, MOV|3, LOOP|0, MOV|1, MOV|4, END_LOOP, MOV|0, MOV|2, WAIT|0, MOV|3, WAIT|0, MOV|2, MOV|3, WAIT|31, WAIT|31, WAIT|31, MOV|4, RECIPE_END, MOV|3};
 unsigned char move_recipe[] = {MOV|0, MOV|1, MOV|3, MOV|2, MOV|5, MOV|4, RECIPE_END, MOV|1};
@@ -56,7 +69,6 @@ void recipe_thread (void* argument){
 					wait_count[i] = SERVO_DELAY * (abs(position[i] - args));
 					position[i] = args;
 					SetPosition(i, args);
-
 				}
 				else{
 					servo_state[i] = recipe_cmd_err;
@@ -108,14 +120,17 @@ int main(void){
 	USART_Write(USART2, prompt, 4);
 	TIM5->CR1 |= TIM_CR1_CEN;
 	TIM2->CR1 |= TIM_CR1_CEN;
-
-
-	for(;;){
+	
+		for(;;){
 
 		CaptureCommands();
 		for(int i = 0; i<2; i++){
 			if(new_command[i] == 1){
-				process_event(user_command[i], servo_state[i], i);
+				//this needs to be changed - commenting out for the time being
+				//process_event(user_command[i], servo_state[i], i);
+				xSemaphoreTake(servo_mutex, ~0);
+				systemServos[i].servo_command = new_command[i];
+				xSemaphoreGive(servo_mutex);
 				new_command[i] = 0;
 			}
 			if(servo_state[i] == recipe_running){
@@ -236,6 +251,9 @@ void TIM2_IRQHandler(){
 	if(TIM2->SR & TIM_SR_UIF){
 		TIM2->SR &= ~(TIM_SR_UIF);
 		timeout = 1;
+	}
+	if(systemServos[0].command_flag || systemServos[1].command_flag){
+		
 	}
 }
 
