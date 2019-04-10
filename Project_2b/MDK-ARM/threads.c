@@ -1,15 +1,17 @@
-//#include "stm32l476xx.h"
+#include "stm32l476xx.h"
 //#include "SysClock.h"
 //#include "stm32l4xx_hal_uart.h"
-//#include "timers.h"
+#include "cmsis_os.h"
+
 //#include "gpio.h"
-//#include "servo.h"
+#include "servo.h"
 #include "recipe.h"
-//#include "LED.h"
+#include "LED.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include "timers.h"
 
 
 #define OPCODE_MASK 0xE0
@@ -29,29 +31,22 @@ int new_command[] = {0,0};
 enum states servo_state[] = {recipe_paused, recipe_paused};
 int position[] = {3,3};
 
+// Struct for holding recipes - used because 2d arrays wouldn't work
+typedef struct recipes{
+    unsigned char* recipe;
+}recipes;
+
 SemaphoreHandle_t  servo_mutex;
-//servo systemServos[2];
 struct commands servo_commands = {{noop,noop},{false,false}};
-//systemServos[0] = servo1;
-//systemServos[1] = servo2;
-
-//typedef struct recipes{
-//  unsigned char* recipe;
-//}recipes;
-//
-//typedef struct servos{
-//	enum user_events servo_command;
-//	bool command_flag;
-//}servo;
-
 
 unsigned char test_recipe[] = {MOV|0, MOV|5, MOV|0, MOV|3, LOOP|0, MOV|1, MOV|4, END_LOOP, MOV|0, MOV|2, WAIT|0, MOV|3, WAIT|0, MOV|2, MOV|3, WAIT|31, WAIT|31, WAIT|31, MOV|4, RECIPE_END, MOV|3};
 unsigned char move_recipe[] = {MOV|0, MOV|1, MOV|3, MOV|2, MOV|5, MOV|4, RECIPE_END, MOV|1};
 unsigned char cmd_err_recipe[] = {MOV|1, MOV|4, WAIT|12, MOV|2, LOOP|2, MOV|1, MOV|2, END_LOOP, MOV|6, MOV|4, RECIPE_END};
 unsigned char loop_err_recipe[] = {MOV|2, MOV|5, MOV|1, WAIT|31, LOOP|3, MOV|2, MOV|5, LOOP|1, MOV|4, MOV|1, END_LOOP, END_LOOP, RECIPE_END};
 
-struct recipes rec_list[2] = {{0},{0}};
-
+// list of recipes
+struct recipes rec_list[2] = {{0},{0}};	
+	
 int count_commands = 0;
 int cancel_command = 0;
 
@@ -62,7 +57,7 @@ void ParseCommand(uint8_t read_command);
 void GetCommandsTimer(void);
 void process_event(enum user_events one_event, enum states current_state, int servo_num);
 
-void parse_recipe (int op){
+void parse_recipe (int op, int args, int i){
 	switch(op){
 			case MOV:
 				if(args >= 0 && args <= 5){
@@ -101,21 +96,22 @@ void parse_recipe (int op){
 				break;
 			default:
 				break;
-		}
 	}
 }
+
 
 bool IsNewCommand(int i){
 	xSemaphoreTake(servo_mutex, 10000);
 	bool is_updated = servo_commands.updated[i];
 	xSemaphoreGive(servo_mutex);
+	return is_updated;
 }
 
 void servo_thread(void* argument){
 	int i = *(int *) argument;
 	for(;;){
 		if(IsNewCommand(i)){
-			user_events command = servo_commands.event[i];
+			enum user_events command = servo_commands.event[i];
 			process_event(command, servo_state[i], i);
 		}
 		if(servo_state[i] == recipe_running){
@@ -126,7 +122,7 @@ void servo_thread(void* argument){
 		   int recipe_command = rec_list[i].recipe[program_counter[i]];
 		   int op = recipe_command & OPCODE_MASK;
 		   int args = recipe_command & ARGS_MASK;
-		   parse_recipe(op);
+		   parse_recipe(op, args, i);
 		   program_counter[i]++;
 		}
 		if(i == 0){
@@ -207,16 +203,16 @@ void ParseCommand(uint8_t read_command){
 	}
 }
 
-
+/*
 void TIM2_IRQHandler(){
 	if(TIM2->SR & TIM_SR_UIF){
 		TIM2->SR &= ~(TIM_SR_UIF);
 		timeout = 1;
 	}
-	if(systemServos[0].command_flag || systemServos[1].command_flag){
+	//if(systemServos[0].command_flag || systemServos[1].command_flag){
 
-	}
-}
+	//}
+}*/
 
 void GetCommandsTimer(){
 	while(!(USART2->ISR & USART_ISR_RXNE)){

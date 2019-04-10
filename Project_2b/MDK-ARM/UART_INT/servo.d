@@ -1,0 +1,11 @@
+uart_int\servo.o: servo.c
+uart_int\servo.o: timers.h
+uart_int\servo.o: ../Drivers/CMSIS/Device/ST/STM32L4xx/Include/stm32l476xx.h
+uart_int\servo.o: ../Drivers/CMSIS/Include/core_cm4.h
+uart_int\servo.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+uart_int\servo.o: ../Drivers/CMSIS/Include/core_cmInstr.h
+uart_int\servo.o: ../Drivers/CMSIS/Include/cmsis_armcc.h
+uart_int\servo.o: ../Drivers/CMSIS/Include/core_cmFunc.h
+uart_int\servo.o: ../Drivers/CMSIS/Include/core_cmSimd.h
+uart_int\servo.o: ../Drivers/CMSIS/Device/ST/STM32L4xx/Include/system_stm32l4xx.h
+uart_int\servo.o: servo.h
