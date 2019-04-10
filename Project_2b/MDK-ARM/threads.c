@@ -30,19 +30,19 @@ enum states servo_state[] = {recipe_paused, recipe_paused};
 int position[] = {3,3};
 
 SemaphoreHandle_t  servo_mutex;
-servo systemServos[2];
+//servo systemServos[2];
 struct commands servo_commands = {{noop,noop},{false,false}};
-systemServos[0] = servo1;
-systemServos[1] = servo2;
+//systemServos[0] = servo1;
+//systemServos[1] = servo2;
 
-typedef struct recipes{
-  unsigned char* recipe;
-}recipes;
-
-typedef struct servos{
-	enum user_events servo_command;
-	bool command_flag;
-}servo;
+//typedef struct recipes{
+//  unsigned char* recipe;
+//}recipes;
+//
+//typedef struct servos{
+//	enum user_events servo_command;
+//	bool command_flag;
+//}servo;
 
 
 unsigned char test_recipe[] = {MOV|0, MOV|5, MOV|0, MOV|3, LOOP|0, MOV|1, MOV|4, END_LOOP, MOV|0, MOV|2, WAIT|0, MOV|3, WAIT|0, MOV|2, MOV|3, WAIT|31, WAIT|31, WAIT|31, MOV|4, RECIPE_END, MOV|3};
@@ -135,22 +135,22 @@ void servo_thread(void* argument){
 	}
 }
 
-int main(void){
-	System_Clock_Init();
-	LED_Init();
-	Timer2_init();
-	Timer5_init();
-	GPIO_Init();
-	UART2_Init();
-
-	rec_list[0].recipe = loop_err_recipe;
-	rec_list[1].recipe = test_recipe;
-
-
-	USART_Write(USART2, prompt, 4);
-	TIM5->CR1 |= TIM_CR1_CEN;
-	TIM2->CR1 |= TIM_CR1_CEN;
-}
+//int main(void){
+//	System_Clock_Init();
+//	LED_Init();
+//	Timer2_init();
+//	Timer5_init();
+//	GPIO_Init();
+//	UART2_Init();
+//
+//	rec_list[0].recipe = loop_err_recipe;
+//	rec_list[1].recipe = test_recipe;
+//
+//
+//	USART_Write(USART2, prompt, 4);
+//	TIM5->CR1 |= TIM_CR1_CEN;
+//	TIM2->CR1 |= TIM_CR1_CEN;
+//}
 
 void CaptureCommands(void){
 	if(command == 0){
