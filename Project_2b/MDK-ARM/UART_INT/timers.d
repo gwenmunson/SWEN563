@@ -1,5 +1,5 @@
-uart_int\timers.o: timers.c
-uart_int\timers.o: timers.h
+uart_int\timers.o: ..\Src\timers.c
+uart_int\timers.o: ..\Src\timers.h
 uart_int\timers.o: ../Drivers/CMSIS/Device/ST/STM32L4xx/Include/stm32l476xx.h
 uart_int\timers.o: ../Drivers/CMSIS/Include/core_cm4.h
 uart_int\timers.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
@@ -8,5 +8,5 @@ uart_int\timers.o: ../Drivers/CMSIS/Include/cmsis_armcc.h
 uart_int\timers.o: ../Drivers/CMSIS/Include/core_cmFunc.h
 uart_int\timers.o: ../Drivers/CMSIS/Include/core_cmSimd.h
 uart_int\timers.o: ../Drivers/CMSIS/Device/ST/STM32L4xx/Include/system_stm32l4xx.h
-uart_int\timers.o: servo.h
+uart_int\timers.o: ..\Src\servo.h
 uart_int\timers.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h

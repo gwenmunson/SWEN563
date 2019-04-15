@@ -21,24 +21,20 @@ Target DLL:      STLink\ST-LINKIII-KEIL_SWO.dll V3.0.1.0
 Dialog DLL:      TCM.DLL V1.32.0.0
  
 <h2>Project:</h2>
-C:\Users\jmb8314\Documents\SWEN563\Project_2b\MDK-ARM\UART_INT.uvprojx
-Project File Date:  04/10/2019
+C:\Users\jmb8314\Documents\Project_2b\MDK-ARM\UART_INT.uvprojx
+Project File Date:  04/12/2019
 
 <h2>Output:</h2>
 *** Using Compiler 'V5.06 update 5 (build 528)', folder: 'C:\Keil_v5\ARM\ARMCC\Bin'
 Build target 'UART_INT'
-compiling threads.c...
-threads.c(156): warning:  #223-D: function "USART_Write" declared implicitly
-  		USART_Write(USART2, &command, 1);
-threads.c(202): warning:  #223-D: function "USART_Write" declared implicitly
-  		USART_Write(USART2, prompt, 4);
-threads.c: 2 warnings, 0 errors
+compiling main.c...
+../Src/main.c(305): warning:  #177-D: function "MX_TIM5_Init"  was declared but never referenced
+  static void MX_TIM5_Init(void)
+../Src/main.c: 1 warning, 0 errors
 linking...
-UART_INT\UART_INT.axf: Error: L6218E: Undefined symbol USART_Write (referred from threads.o).
-Not enough information to list image symbols.
-Not enough information to list load addresses in the image map.
-Finished: 2 information, 0 warning and 1 error messages.
-"UART_INT\UART_INT.axf" - 1 Error(s), 2 Warning(s).
+Program Size: Code=15440 RO-data=528 RW-data=196 ZI-data=11476  
+FromELF: creating hex file...
+"UART_INT\UART_INT.axf" - 0 Error(s), 1 Warning(s).
 
 <h2>Software Packages used:</h2>
 
@@ -61,7 +57,6 @@ Package Vendor: Keil
 <h2>Collection of Component Files used:</h2>
 
    * Component: ARM::CMSIS:CORE:5.2.0
-Target not created.
 Build Time Elapsed:  00:00:03
 </pre>
 </body>

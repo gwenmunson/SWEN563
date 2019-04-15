@@ -50,3 +50,13 @@ uart_int\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/semphr.h
 uart_int\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/include/event_groups.h
 uart_int\main.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 uart_int\main.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+uart_int\main.o: ../Src/UART_1.h
+uart_int\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS/cmsis_os.h
+uart_int\main.o: ../Src/threads_2.h
+uart_int\main.o: ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS/cmsis_os.h
+uart_int\main.o: ../Src/servo.h
+uart_int\main.o: ../Src/recipe.h
+uart_int\main.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+uart_int\main.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+uart_int\main.o: ../Src/LED.h
+uart_int\main.o: ../Src/timers.h

@@ -1,5 +1,5 @@
-uart_int\led.o: LED.c
-uart_int\led.o: LED.h
+uart_int\led.o: ..\Src\LED.c
+uart_int\led.o: ..\Src\LED.h
 uart_int\led.o: ../Drivers/CMSIS/Device/ST/STM32L4xx/Include/stm32l476xx.h
 uart_int\led.o: ../Drivers/CMSIS/Include/core_cm4.h
 uart_int\led.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
@@ -8,6 +8,6 @@ uart_int\led.o: ../Drivers/CMSIS/Include/cmsis_armcc.h
 uart_int\led.o: ../Drivers/CMSIS/Include/core_cmFunc.h
 uart_int\led.o: ../Drivers/CMSIS/Include/core_cmSimd.h
 uart_int\led.o: ../Drivers/CMSIS/Device/ST/STM32L4xx/Include/system_stm32l4xx.h
-uart_int\led.o: recipe.h
+uart_int\led.o: ..\Src\recipe.h
 uart_int\led.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 uart_int\led.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
