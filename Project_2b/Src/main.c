@@ -55,6 +55,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stdio.h"
+#include "string.h"
+#include "UART_1.h"
+#include "threads_2.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -77,10 +80,32 @@ RNG_HandleTypeDef hrng;
 
 TIM_HandleTypeDef htim5;
 
-UART_HandleTypeDef huart2;
-
 osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
+
+//int timeout = 0;
+//uint8_t command;
+int program_counter[] = {0,0};
+int wait_count[] = {0,0};
+int in_loop[] = {0,0};
+int loop_counter[] = {0,0};
+int loop_instruction[] = {0,0};
+enum user_events user_command[] = {pause_recipe,pause_recipe};
+int new_command[] = {0,0};
+enum states servo_state[] = {recipe_paused, recipe_paused};
+int position[] = {3,3};
+int id[2] = {0,1};
+bool cancel = false;
+
+
+UART_HandleTypeDef huart2;
+
+uint8_t rx_buffer[10];  // Shared buffer between foreground and UART RX
+uint8_t rx_byte;        // the currently received byte
+uint8_t rx_index = 0;   // pointer into the rx_buffer
+SemaphoreHandle_t  transmit_mutex;  // protects UART transmitter resource
+SemaphoreHandle_t  receive_mutex;   // protects UART receiveer resource
+
 
 /* USER CODE END PV */
 
@@ -98,113 +123,6 @@ void StartDefaultTask(void const * argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-#include "string.h"
-
-uint8_t rx_buffer[20];  // Shared buffer between foreground and UART RX
-uint8_t rx_byte;        // the currently received byte
-uint8_t rx_index = 0;   // pointer into the rx_buffer
-SemaphoreHandle_t  transmit_mutex;  // protects UART transmitter resource
-SemaphoreHandle_t  receive_mutex;   // protects UART receiveer resource
-
-void test_task_init (void);
-void test_task(void* argument);
-
-/*
- * prints the string, blocks if UART busy, thus safe from multiple threads
- */
-void vPrintString(char *message) {
-  xSemaphoreTake(transmit_mutex, ~0);         // Wait forever until the USART is free, then take mutex
-  HAL_UART_Transmit_IT(&huart2, (uint8_t *)message, strlen(message));
-  xSemaphoreGive(transmit_mutex);             // Give up mutex after printing
-}
-
-/*
- * overrides _weak HAL receiver callback, called when byte received
- */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-  BaseType_t xTaskWoken = pdFALSE;
-  static BaseType_t i_have_receive_mutex = pdFALSE;
-  if(huart->Instance == USART2) {
-
-    // if received byte is a newline, give the received buffer to the forground
-    if(rx_byte == '\r') {
-      xSemaphoreGiveFromISR(receive_mutex, &xTaskWoken);
-      i_have_receive_mutex = pdFALSE;     // We don't have the mutex anymore
-      rx_index = 0;                       // Next time around, queue data from start of buffer
-    }
-
-    // buffer all characters
-    else {
-      // acquire receive_mutex once
-      if(!i_have_receive_mutex) {
-        xSemaphoreTakeFromISR(receive_mutex,  &xTaskWoken);
-        i_have_receive_mutex = pdTRUE;    // don't need to ask to Take again
-      }
-
-      // buffer all other characters
-      rx_buffer[rx_index++] = rx_byte;    // buffer the byte
-      rx_buffer[rx_index] = 0;            // keep string NULL terminated
-      if(rx_index >= sizeof(rx_buffer))
-        rx_index = 0;
-    }
-    HAL_UART_Receive_IT(&huart2, &rx_byte, 1);  // one time, kick off receive interrupt (repeated from within callback)
-  }
-}
-
-/*
- * Initializes mutexes, interrupts, etc.  Creates a test task.
- */
-char task_names[3][20] = {"1", "2", "3" };
-void test_task_init (void) {
-  transmit_mutex = xSemaphoreCreateMutex();     // create mutex to protect UART transmitter resource
-  receive_mutex = xSemaphoreCreateMutex();      // create mutex to protect UART receiver resource
-  HAL_UART_Receive_IT(&huart2, &rx_byte, 1);    // one time, kick off receive interrupt (repeated from within rx callback)
-  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_2);
-	for(int ii=0; ii<3; ii++ ) {
-    if (pdPASS != xTaskCreate (test_task,	"test", 256, (void *)&task_names[ii], osPriorityNormal, NULL)) {
-      Error_Handler();
-    }
-	}
-}
-
-/*
- * just some old task that periodically prints strings in a safe manner
- */
-void set_duty_cycle(TIM_HandleTypeDef* htim, int channel, double percent);
-void set_duty_cycle(TIM_HandleTypeDef* htim, int channel, double percent) {
-  if(channel == TIM_CHANNEL_1 || channel == TIM_CHANNEL_2 || channel == TIM_CHANNEL_3)
-    __HAL_TIM_SetCompare(htim, channel, percent * __HAL_TIM_GetAutoreload(htim));
-}
-
-void test_task(void* argument) {
-  char *msg = (char *)argument;
-  static char buf[100];
-  uint32_t random;
-  static int count;
-  while(1) {
-    // check to see if something has arrived over UART (e.g. a user command)
-    if(rx_buffer[0] && (pdTRUE == xSemaphoreTake(receive_mutex, 0))) {  // if we Take mutex, ISR stops receiving chars
-      vPrintString((char *)rx_buffer);   // something arrived, stop receiving chars, print what we have.
-      rx_buffer[0] = 0;  // flag ourself to NOT try to Take mutex until after ISR has received a new char (and owns mutex)
-      xSemaphoreGive(receive_mutex);
-    }
-    else {
-      count = (++count) % 100;
-      set_duty_cycle(&htim5, TIM_CHANNEL_1, count/100.0);
-      set_duty_cycle(&htim5, TIM_CHANNEL_2, 1-count/100.0);
-
-      int len = sprintf(buf, "%s %80d\r\n", msg, __HAL_TIM_GetCounter(&htim5));
-      vPrintString(buf);
-    }
-
-    // wait for some random time
-
-    HAL_RNG_GenerateRandomNumber(&hrng, &random);
-    osDelay(100 + random&0xff);   // delay with jitter
-  }
-}
-
 
 /* USER CODE END 0 */
 
@@ -238,9 +156,14 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_RNG_Init();
-  MX_TIM5_Init();
+  //MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
+  UART_Init();//&huart2);
+	Timer5_init();
 
+	char init_print[128];
+	sprintf(init_print, "UART Initialized\r\n");
+	//vPrintString(init_print);
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -262,7 +185,8 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
-  test_task_init();
+
+  thread_init();
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
@@ -560,3 +484,329 @@ void assert_failed(char *file, uint32_t line)
 #endif /* USE_FULL_ASSERT */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
+
+
+
+
+
+
+
+// Struct for holding recipes - used because 2d arrays wouldn't work
+typedef struct recipes{
+    unsigned char* recipe;
+}recipes;
+
+SemaphoreHandle_t  servo_mutex;
+struct commands servo_commands = {{noop,noop},{false,false}};
+
+unsigned char test_recipe[] = {MOV|0, MOV|5, MOV|0, MOV|3, LOOP|0, MOV|1, MOV|4, END_LOOP, MOV|0, MOV|2, WAIT|0, MOV|3, WAIT|0, MOV|2, MOV|3, WAIT|31, WAIT|31, WAIT|31, MOV|4, RECIPE_END, MOV|3};
+unsigned char move_recipe[] = {MOV|0, MOV|1, MOV|3, MOV|2, MOV|5, MOV|4, RECIPE_END, MOV|1};
+//unsigned char cmd_err_recipe[] = {MOV|1, MOV|4, WAIT|12, MOV|2, LOOP|2, MOV|1, MOV|2, END_LOOP, MOV|6, MOV|4, RECIPE_END};
+//unsigned char loop_err_recipe[] = {MOV|2, MOV|5, MOV|1, WAIT|31, LOOP|3, MOV|2, MOV|5, LOOP|1, MOV|4, MOV|1, END_LOOP, END_LOOP, RECIPE_END};
+
+// list of recipes
+struct recipes rec_list[2] = {{0},{0}};
+
+//int count_commands = 0;
+//bool cancel_command = false;
+
+//uint8_t prompt[] = "\r\n>>";
+
+
+
+void UART_Init(void){//UART_HandleTypeDef *huart2){
+	//huart2_thread = *huart2;
+	transmit_mutex = xSemaphoreCreateMutex();     // create mutex to protect UART transmitter resource
+	receive_mutex = xSemaphoreCreateMutex();      // create mutex to protect UART receiver resource
+	HAL_UART_Receive_IT(&huart2, &rx_byte, 1);    // one time, kick off receive interrupt (repeated from within rx callback)
+}
+
+/*
+ * prints the string, blocks if UART busy, thus safe from multiple threads
+ */
+void vPrintString(char *message) {
+  xSemaphoreTake(transmit_mutex, ~0);         // Wait forever until the USART is free, then take mutex
+  HAL_UART_Transmit(&huart2, (uint8_t *)message, strlen(message), 10000);
+  xSemaphoreGive(transmit_mutex);             // Give up mutex after printing
+	//HAL_Delay(100);
+}
+
+/*
+ * overrides _weak HAL receiver callback, called when byte received
+ */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+  BaseType_t xTaskWoken = pdFALSE;
+  static BaseType_t i_have_receive_mutex = pdFALSE;
+  if(huart->Instance == USART2) {
+
+    // if received byte is a newline, give the received buffer to the forground
+    if(rx_byte == '\r') {
+      xSemaphoreGiveFromISR(receive_mutex, &xTaskWoken);
+      i_have_receive_mutex = pdFALSE;     // We don't have the mutex anymore
+      rx_index = 0;                       // Next time around, queue data from start of buffer
+    }
+
+    // buffer all characters
+    else {
+      // acquire receive_mutex once
+      if(!i_have_receive_mutex) {
+        xSemaphoreTakeFromISR(receive_mutex,  &xTaskWoken);
+        i_have_receive_mutex = pdTRUE;    // don't need to ask to Take again
+      }
+
+      // buffer all other characters
+      rx_buffer[rx_index++] = rx_byte;    // buffer the byte
+      rx_buffer[rx_index] = 0;            // keep string NULL terminated
+      if(rx_index >= sizeof(rx_buffer))
+        rx_index = 0;
+    }
+    HAL_UART_Receive_IT(&huart2, &rx_byte, 1);  // one time, kick off receive interrupt (repeated from within callback)
+  }
+}
+
+void thread_init(void){
+	servo_mutex = xSemaphoreCreateMutex();
+
+	char init_print[32];
+	sprintf(init_print, "Initializing Threads\r\n");
+	vPrintString(init_print);
+
+	xTaskCreate(input_thread, "input_thread", 128, NULL, osPriorityNormal, 0);
+
+	xTaskCreate(servo_thread, "servo_thread", 128, (void *)&id[0], osPriorityNormal, 0);
+	xTaskCreate(servo_thread, "servo_thread", 128, (void *)&id[1], osPriorityNormal, 0);
+}
+
+void parse_recipe (int op, int args, int i){
+	switch(op){
+			case MOV:
+				if(args >= 0 && args <= 5){
+					wait_count[i] = SERVO_DELAY * (abs(position[i] - args));
+					position[i] = args;
+					SetPosition(i, args);
+				}
+				else{
+					servo_state[i] = recipe_cmd_err;
+				}
+				break;
+			case WAIT:
+				wait_count[i] = args+1;
+				break;
+			case LOOP:
+				if(in_loop[i] == 1){
+					servo_state[i] = recipe_nested_err;
+				}
+				else{
+					loop_counter[i] = args;
+					in_loop[i] = 1;
+					loop_instruction[i] = program_counter[i];
+				}
+				break;
+			case END_LOOP:
+				if(loop_counter[i] > 0){
+					loop_counter[i]--;
+					program_counter[i] = loop_instruction[i];
+				}
+				else{
+					in_loop[i] = 0;
+				}
+				break;
+			case RECIPE_END:
+				servo_state[i] = recipe_done;
+				break;
+			default:
+				break;
+	}
+}
+
+
+bool IsNewCommand(int i){
+	xSemaphoreTake(servo_mutex, 10000);
+	bool is_updated = servo_commands.updated[i];
+	xSemaphoreGive(servo_mutex);
+	return is_updated;
+}
+
+void servo_thread(void* argument){
+	int i = *(int*) argument;
+	//char display_msg[32];
+	//sprintf(display_msg, "Initialized Servo Thread %d\n\r", i);
+	//vPrintString(display_msg);
+	for(;;){
+		if(IsNewCommand(i)){
+			enum user_events command = servo_commands.event[i];
+			process_event(command, servo_state[i], i);
+		}
+		if(servo_state[i] == recipe_running){
+		   if(wait_count[i] > 0){
+		   	wait_count[i]--;
+		   	continue;
+		   }
+		   int recipe_command = rec_list[i].recipe[program_counter[i]];
+		   int op = recipe_command & OPCODE_MASK;
+		   int args = recipe_command & ARGS_MASK;
+		   parse_recipe(op, args, i);
+		   program_counter[i]++;
+		}
+		if(i == 0){
+			StateLEDs(servo_state[0]);
+		}
+	}
+}
+/*
+void CaptureCommands(void){
+	if(command == 0){
+		return;
+	}
+	else{
+		USART_Write(USART2, &command, 1);
+		ParseCommand(command);
+	}
+}
+*/
+void ParseCommand(char rx_byte[2]){
+	char print_byte[20];
+	//sprintf(print_byte, "Parse Command received %c\r\n", rx_byte);
+	//vPrintString(print_byte);
+
+	for(int i = 0; i<2; i++){
+		if(rx_byte[i] == 0x58 || rx_byte[i] == 0x78){
+			servo_commands.event[0] = noop;
+			servo_commands.event[1] = noop;
+			servo_commands.updated[0] = false;
+			servo_commands.updated[1] = false;
+			sprintf(print_byte, "cancel\r\n");
+			vPrintString(print_byte);
+			break;
+		}
+		switch(rx_byte[i]){
+			case 0x50:
+			case 0x70:
+				servo_commands.event[i] = pause_recipe;
+				servo_commands.updated[i] = true;
+				sprintf(print_byte, "pause\r\n");
+				vPrintString(print_byte);
+				break;
+			case 0x43:
+			case 0x63:
+				servo_commands.event[i] = continue_recipe;
+				servo_commands.updated[i] = true;
+				sprintf(print_byte, "continue\r\n");
+				vPrintString(print_byte);
+				break;
+			case 0x52:
+			case 0x72:
+				servo_commands.event[i] = move_right;
+				servo_commands.updated[i] = true;
+				sprintf(print_byte, "right\r\n");
+				vPrintString(print_byte);
+				break;
+			case 0x4c:
+			case 0x6c:
+				servo_commands.event[i] = move_left;
+				servo_commands.updated[i] = true;
+				sprintf(print_byte, "left\r\n");
+				vPrintString(print_byte);
+				break;
+			case 0x42:
+			case 0x62:
+				servo_commands.event[i] = begin_recipe;
+				servo_commands.updated[i] = true;
+				sprintf(print_byte, "begin\r\n");
+				vPrintString(print_byte);
+				break;
+			default:
+				servo_commands.event[i] = noop;
+				sprintf(print_byte, "noop\r\n");
+				vPrintString(print_byte);
+				break;
+		}//end switch statement
+	}
+}
+
+/*
+void GetCommandsTimer(){
+	while(!(USART2->ISR & USART_ISR_RXNE)){
+		if(timeout == 1){
+			command = 0;
+			return;
+		}
+	}
+	uint8_t val = USART2->RDR & 0xFF;;
+	command = val;
+}
+*/
+
+void process_event(enum user_events one_event, enum states current_state, int servo_num){
+	switch (current_state)
+	{
+		case recipe_paused:
+        case recipe_done:
+			if (one_event == move_left && position[servo_num] < 5) // prevent moving too far left
+			{
+				position[servo_num]++;
+				wait_count[servo_num] += SERVO_DELAY;
+				SetPosition(servo_num, position[servo_num]) ;
+			}
+			else if(one_event == move_right && position[servo_num] > 0){
+				position[servo_num]--;
+				wait_count[servo_num] += SERVO_DELAY;
+				SetPosition(servo_num, position[servo_num]);
+			}
+			else if(one_event == begin_recipe){
+                program_counter[servo_num] = 0;
+                wait_count[servo_num] = 0;
+                in_loop[servo_num] = 0;
+                loop_instruction[servo_num] = 0;
+                servo_state[servo_num] = recipe_running;
+			}
+			else if(one_event == continue_recipe){
+				servo_state[servo_num] = recipe_running;
+			}
+			break ;
+		case recipe_running:
+            if(one_event == pause_recipe){
+				servo_state[servo_num] = recipe_paused;
+			}
+			break;
+		default:
+			break;
+	}
+}
+
+void input_thread(void* argument){
+	char display_msg[32];
+	sprintf(display_msg, "Input thread initialized\n\r");
+	vPrintString(display_msg);
+	char rx_bytes[2];
+	int i = 0;
+
+	sprintf(display_msg, "\r\n>> ");
+	vPrintString(display_msg);
+
+	for(;;){
+		//for(int i = 0; i<3; i++){
+		while(i < 3){
+			//let's grab the input from the user
+			HAL_UART_Receive_IT(&huart2, &rx_byte, 1);
+			if(rx_byte != 0){
+				char print_byte[1];
+				sprintf(print_byte, "%c", rx_byte);
+				vPrintString(print_byte);
+				if(i != 2){
+					rx_bytes[i] = rx_byte;
+				}
+				else if(i == 2){
+					xSemaphoreTake(servo_mutex, 10000);
+					ParseCommand(rx_bytes);
+					xSemaphoreGive(servo_mutex);
+				}
+				i++;
+			}
+			rx_byte = 0;
+		}//end if statement
+		i = 0;
+		vPrintString(display_msg);
+	}//end for loop
+}
+
