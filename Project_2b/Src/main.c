@@ -58,6 +58,7 @@
 #include "string.h"
 #include "UART_1.h"
 #include "threads_2.h"
+#include "gpio.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -82,6 +83,24 @@ TIM_HandleTypeDef htim5;
 
 osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
+
+// Struct for holding recipes - used because 2d arrays wouldn't work
+typedef struct recipes{
+    unsigned char* recipe;
+}recipes;
+
+SemaphoreHandle_t  servo_mutex;
+SemaphoreHandle_t wait_mutex;
+struct commands servo_commands = {{noop,noop},{false,false}};
+
+unsigned char test_recipe[] = {MOV|0, MOV|5, MOV|0, MOV|3, LOOP|0, MOV|1, MOV|4, END_LOOP, MOV|0, MOV|2, WAIT|0, MOV|3, WAIT|0, MOV|2, MOV|3, WAIT|31, WAIT|31, WAIT|31, MOV|4, RECIPE_END, MOV|3};
+unsigned char move_recipe[] = {MOV|0, MOV|1, MOV|3, MOV|2, MOV|5, MOV|4, RECIPE_END, MOV|1};
+unsigned char wait_recipe[] = {MOV|0, MOV|3, WAIT|31,WAIT|31,WAIT|31, MOV|5};
+unsigned char cmd_err_recipe[] = {MOV|1, MOV|4, WAIT|12, MOV|2, LOOP|2, MOV|1, MOV|2, END_LOOP, MOV|6, MOV|4, RECIPE_END};
+unsigned char loop_err_recipe[] = {MOV|2, MOV|5, MOV|1, WAIT|31, LOOP|3, MOV|2, MOV|5, LOOP|1, MOV|4, MOV|1, END_LOOP, END_LOOP, RECIPE_END};
+
+// list of recipes
+struct recipes rec_list[2] = {{0},{0}};	
 
 //int timeout = 0;
 //uint8_t command;
@@ -158,12 +177,18 @@ int main(void)
   MX_RNG_Init();
   //MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
+	LED_Init();
   UART_Init();//&huart2);
 	Timer5_init();
+	GPIO_Init();
 
-	char init_print[128];
-	sprintf(init_print, "UART Initialized\r\n");
-	//vPrintString(init_print);
+	TIM5->CR1 |= TIM_CR1_CEN;
+	char init_print[20];
+	sprintf(init_print, "Initialization done\r\n");
+	vPrintString(init_print);
+	
+	rec_list[0].recipe = loop_err_recipe;
+  rec_list[1].recipe = test_recipe;
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -185,7 +210,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
-
+	
   thread_init();
   /* USER CODE END RTOS_THREADS */
 
@@ -491,27 +516,6 @@ void assert_failed(char *file, uint32_t line)
 
 
 
-// Struct for holding recipes - used because 2d arrays wouldn't work
-typedef struct recipes{
-    unsigned char* recipe;
-}recipes;
-
-SemaphoreHandle_t  servo_mutex;
-struct commands servo_commands = {{noop,noop},{false,false}};
-
-unsigned char test_recipe[] = {MOV|0, MOV|5, MOV|0, MOV|3, LOOP|0, MOV|1, MOV|4, END_LOOP, MOV|0, MOV|2, WAIT|0, MOV|3, WAIT|0, MOV|2, MOV|3, WAIT|31, WAIT|31, WAIT|31, MOV|4, RECIPE_END, MOV|3};
-unsigned char move_recipe[] = {MOV|0, MOV|1, MOV|3, MOV|2, MOV|5, MOV|4, RECIPE_END, MOV|1};
-//unsigned char cmd_err_recipe[] = {MOV|1, MOV|4, WAIT|12, MOV|2, LOOP|2, MOV|1, MOV|2, END_LOOP, MOV|6, MOV|4, RECIPE_END};
-//unsigned char loop_err_recipe[] = {MOV|2, MOV|5, MOV|1, WAIT|31, LOOP|3, MOV|2, MOV|5, LOOP|1, MOV|4, MOV|1, END_LOOP, END_LOOP, RECIPE_END};
-
-// list of recipes
-struct recipes rec_list[2] = {{0},{0}};
-
-//int count_commands = 0;
-//bool cancel_command = false;
-
-//uint8_t prompt[] = "\r\n>>";
-
 
 
 void UART_Init(void){//UART_HandleTypeDef *huart2){
@@ -519,7 +523,7 @@ void UART_Init(void){//UART_HandleTypeDef *huart2){
 	transmit_mutex = xSemaphoreCreateMutex();     // create mutex to protect UART transmitter resource
 	receive_mutex = xSemaphoreCreateMutex();      // create mutex to protect UART receiver resource
 	HAL_UART_Receive_IT(&huart2, &rx_byte, 1);    // one time, kick off receive interrupt (repeated from within rx callback)
-}
+}	
 
 /*
  * prints the string, blocks if UART busy, thus safe from multiple threads
@@ -566,18 +570,19 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 void thread_init(void){
 	servo_mutex = xSemaphoreCreateMutex();
-
+	
 	char init_print[32];
 	sprintf(init_print, "Initializing Threads\r\n");
 	vPrintString(init_print);
 
 	xTaskCreate(input_thread, "input_thread", 128, NULL, osPriorityNormal, 0);
-
+	
 	xTaskCreate(servo_thread, "servo_thread", 128, (void *)&id[0], osPriorityNormal, 0);
 	xTaskCreate(servo_thread, "servo_thread", 128, (void *)&id[1], osPriorityNormal, 0);
 }
 
 void parse_recipe (int op, int args, int i){
+	char state[20];
 	switch(op){
 			case MOV:
 				if(args >= 0 && args <= 5){
@@ -590,7 +595,7 @@ void parse_recipe (int op, int args, int i){
 				}
 				break;
 			case WAIT:
-				wait_count[i] = args+1;
+				wait_count[i] = (args+1) * (6000);
 				break;
 			case LOOP:
 				if(in_loop[i] == 1){
@@ -612,6 +617,8 @@ void parse_recipe (int op, int args, int i){
 				}
 				break;
 			case RECIPE_END:
+				sprintf(state, "Got RECIPE_END\r\n");
+				vPrintString(state);
 				servo_state[i] = recipe_done;
 				break;
 			default:
@@ -624,25 +631,35 @@ bool IsNewCommand(int i){
 	xSemaphoreTake(servo_mutex, 10000);
 	bool is_updated = servo_commands.updated[i];
 	xSemaphoreGive(servo_mutex);
+	//char new_comm[20];
+	//sprintf(new_comm,"IsNewCommand = %d\r\n", is_updated);
+	//vPrintString(new_comm);
 	return is_updated;
 }
 
 void servo_thread(void* argument){
+	char print_string[20];
 	int i = *(int*) argument;
-	//char display_msg[32];
-	//sprintf(display_msg, "Initialized Servo Thread %d\n\r", i);
-	//vPrintString(display_msg);
 	for(;;){
 		if(IsNewCommand(i)){
+			xSemaphoreTake(servo_mutex, 10000);
 			enum user_events command = servo_commands.event[i];
+			xSemaphoreGive(servo_mutex);
 			process_event(command, servo_state[i], i);
+			xSemaphoreTake(servo_mutex, 10000);
+			servo_commands.updated[i] = false;
+			xSemaphoreGive(servo_mutex);
 		}
 		if(servo_state[i] == recipe_running){
+			 //sprintf(print_string, "wait = %d\r\n", wait_count[i]);
+			 //vPrintString(print_string);
 		   if(wait_count[i] > 0){
 		   	wait_count[i]--;
 		   	continue;
 		   }
 		   int recipe_command = rec_list[i].recipe[program_counter[i]];
+			 //sprintf(print_string, "Recipe_command = %d\r\npc = %d\r\n", recipe_command, program_counter[i]);
+			 //vPrintString(print_string);
 		   int op = recipe_command & OPCODE_MASK;
 		   int args = recipe_command & ARGS_MASK;
 		   parse_recipe(op, args, i);
@@ -665,18 +682,13 @@ void CaptureCommands(void){
 }
 */
 void ParseCommand(char rx_byte[2]){
-	char print_byte[20];
-	//sprintf(print_byte, "Parse Command received %c\r\n", rx_byte);
-	//vPrintString(print_byte);
-
 	for(int i = 0; i<2; i++){
 		if(rx_byte[i] == 0x58 || rx_byte[i] == 0x78){
 			servo_commands.event[0] = noop;
 			servo_commands.event[1] = noop;
 			servo_commands.updated[0] = false;
 			servo_commands.updated[1] = false;
-			sprintf(print_byte, "cancel\r\n");
-			vPrintString(print_byte);
+			
 			break;
 		}
 		switch(rx_byte[i]){
@@ -684,41 +696,29 @@ void ParseCommand(char rx_byte[2]){
 			case 0x70:
 				servo_commands.event[i] = pause_recipe;
 				servo_commands.updated[i] = true;
-				sprintf(print_byte, "pause\r\n");
-				vPrintString(print_byte);
 				break;
 			case 0x43:
 			case 0x63:
 				servo_commands.event[i] = continue_recipe;
 				servo_commands.updated[i] = true;
-				sprintf(print_byte, "continue\r\n");
-				vPrintString(print_byte);
 				break;
 			case 0x52:
 			case 0x72:
 				servo_commands.event[i] = move_right;
 				servo_commands.updated[i] = true;
-				sprintf(print_byte, "right\r\n");
-				vPrintString(print_byte);
 				break;
 			case 0x4c:
 			case 0x6c:
 				servo_commands.event[i] = move_left;
 				servo_commands.updated[i] = true;
-				sprintf(print_byte, "left\r\n");
-				vPrintString(print_byte);
 				break;
 			case 0x42:
 			case 0x62:
 				servo_commands.event[i] = begin_recipe;
 				servo_commands.updated[i] = true;
-				sprintf(print_byte, "begin\r\n");
-				vPrintString(print_byte);
 				break;
 			default:
 				servo_commands.event[i] = noop;
-				sprintf(print_byte, "noop\r\n");
-				vPrintString(print_byte);
 				break;
 		}//end switch statement
 	}
@@ -741,7 +741,7 @@ void process_event(enum user_events one_event, enum states current_state, int se
 	switch (current_state)
 	{
 		case recipe_paused:
-        case recipe_done:
+    case recipe_done:
 			if (one_event == move_left && position[servo_num] < 5) // prevent moving too far left
 			{
 				position[servo_num]++;
@@ -765,7 +765,7 @@ void process_event(enum user_events one_event, enum states current_state, int se
 			}
 			break ;
 		case recipe_running:
-            if(one_event == pause_recipe){
+      if(one_event == pause_recipe){
 				servo_state[servo_num] = recipe_paused;
 			}
 			break;
@@ -780,10 +780,10 @@ void input_thread(void* argument){
 	vPrintString(display_msg);
 	char rx_bytes[2];
 	int i = 0;
-
+	
 	sprintf(display_msg, "\r\n>> ");
 	vPrintString(display_msg);
-
+	
 	for(;;){
 		//for(int i = 0; i<3; i++){
 		while(i < 3){
@@ -795,7 +795,7 @@ void input_thread(void* argument){
 				vPrintString(print_byte);
 				if(i != 2){
 					rx_bytes[i] = rx_byte;
-				}
+				}			
 				else if(i == 2){
 					xSemaphoreTake(servo_mutex, 10000);
 					ParseCommand(rx_bytes);
@@ -807,6 +807,6 @@ void input_thread(void* argument){
 		}//end if statement
 		i = 0;
 		vPrintString(display_msg);
-	}//end for loop
+	}//end for loop	
 }
 

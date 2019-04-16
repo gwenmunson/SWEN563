@@ -10,6 +10,7 @@
 "uart_int\threads.o"
 "uart_int\timers.o"
 "uart_int\uart.o"
+"uart_int\gpio.o"
 "uart_int\stm32l4xx_hal_rng.o"
 "uart_int\stm32l4xx_hal_tim.o"
 "uart_int\stm32l4xx_hal_tim_ex.o"

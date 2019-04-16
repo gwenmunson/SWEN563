@@ -711,17 +711,17 @@ ARM Macro Assembler    Page 11
               00000000 
 Command Line: --debug --xref --diag_suppress=9931 --cpu=Cortex-M4.fp --apcs=int
 erwork --depend=uart_int\startup_stm32l476xx.d -ouart_int\startup_stm32l476xx.o
- -I..\\Inc -I.\RTE\_UART_INT -IC:\Keil_v5\ARM\PACK\ARM\CMSIS\5.5.1\CMSIS\Core\I
-nclude -IC:\Keil_v5\ARM\PACK\Keil\STM32L4xx_DFP\2.2.0\Drivers\CMSIS\Device\ST\S
+ -I..\\Inc -I.\RTE\_UART_INT -IC:\Keil_v5\ARM\PACK\ARM\CMSIS\5.4.0\CMSIS\Core\I
+nclude -IC:\Keil_v5\ARM\PACK\Keil\STM32L4xx_DFP\2.0.0\Drivers\CMSIS\Device\ST\S
 
 
 
 ARM Macro Assembler    Page 12 
 
 
-TM32L4xx\Include --predefine="__MICROLIB SETA 1" --predefine="__UVISION_VERSION
- SETA 524" --predefine="_RTE_ SETA 1" --predefine="STM32L476xx SETA 1" --list=s
-tartup_stm32l476xx.lst startup_stm32l476xx.s
+TM32L4xx\Include --predefine="__EVAL SETA 1" --predefine="__MICROLIB SETA 1" --
+predefine="__UVISION_VERSION SETA 525" --predefine="_RTE_ SETA 1" --predefine="
+STM32L476xx SETA 1" --list=startup_stm32l476xx.lst startup_stm32l476xx.s
 
 
 
@@ -1806,4 +1806,4 @@ Symbol: __main
       At line 189 in file startup_stm32l476xx.s
 Comment: __main used once
 2 symbols
-445 symbols in table
+446 symbols in table

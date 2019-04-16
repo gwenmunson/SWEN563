@@ -60,3 +60,4 @@ uart_int\main.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 uart_int\main.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
 uart_int\main.o: ../Src/LED.h
 uart_int\main.o: ../Src/timers.h
+uart_int\main.o: ../Src/gpio.h

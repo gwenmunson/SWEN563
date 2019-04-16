@@ -18,7 +18,7 @@
 
 #define OPCODE_MASK 0xE0
 #define ARGS_MASK 0x1F
-#define SERVO_DELAY 2
+#define SERVO_DELAY 20000
 
 //Prototypes
 void thread_init(void);
