@@ -133,7 +133,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_RNG_Init(void);
-static void MX_TIM5_Init(void);
+//static void MX_TIM5_Init(void);
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
@@ -187,7 +187,7 @@ int main(void)
 	sprintf(init_print, "Initialization done\r\n");
 	vPrintString(init_print);
 	
-	rec_list[0].recipe = loop_err_recipe;
+	rec_list[0].recipe = move_recipe;
   rec_list[1].recipe = test_recipe;
   /* USER CODE END 2 */
 
@@ -327,6 +327,7 @@ static void MX_RNG_Init(void)
   * @param None
   * @retval None
   */
+
 static void MX_TIM5_Init(void)
 {
 
@@ -582,7 +583,6 @@ void thread_init(void){
 }
 
 void parse_recipe (int op, int args, int i){
-	char state[20];
 	switch(op){
 			case MOV:
 				if(args >= 0 && args <= 5){
@@ -617,8 +617,6 @@ void parse_recipe (int op, int args, int i){
 				}
 				break;
 			case RECIPE_END:
-				sprintf(state, "Got RECIPE_END\r\n");
-				vPrintString(state);
 				servo_state[i] = recipe_done;
 				break;
 			default:
@@ -638,7 +636,6 @@ bool IsNewCommand(int i){
 }
 
 void servo_thread(void* argument){
-	char print_string[20];
 	int i = *(int*) argument;
 	for(;;){
 		if(IsNewCommand(i)){
@@ -651,15 +648,11 @@ void servo_thread(void* argument){
 			xSemaphoreGive(servo_mutex);
 		}
 		if(servo_state[i] == recipe_running){
-			 //sprintf(print_string, "wait = %d\r\n", wait_count[i]);
-			 //vPrintString(print_string);
 		   if(wait_count[i] > 0){
 		   	wait_count[i]--;
 		   	continue;
 		   }
 		   int recipe_command = rec_list[i].recipe[program_counter[i]];
-			 //sprintf(print_string, "Recipe_command = %d\r\npc = %d\r\n", recipe_command, program_counter[i]);
-			 //vPrintString(print_string);
 		   int op = recipe_command & OPCODE_MASK;
 		   int args = recipe_command & ARGS_MASK;
 		   parse_recipe(op, args, i);
@@ -717,6 +710,11 @@ void ParseCommand(char rx_byte[2]){
 				servo_commands.event[i] = begin_recipe;
 				servo_commands.updated[i] = true;
 				break;
+			case 0x53:
+			case 0x73:
+				servo_commands.event[i] = sweep;
+				servo_commands.updated[i] = true;
+				break;
 			default:
 				servo_commands.event[i] = noop;
 				break;
@@ -762,6 +760,14 @@ void process_event(enum user_events one_event, enum states current_state, int se
 			}
 			else if(one_event == continue_recipe){
 				servo_state[servo_num] = recipe_running;
+			}
+			else if(one_event == sweep){
+				int current_pos = position[servo_num];
+				SetPosition(servo_num, 0);
+				for(int i = 0; i<((500*SERVO_DELAY)); i++);
+				SetPosition(servo_num, 5);
+				for(int i = 0; i<((500*SERVO_DELAY)); i++);
+				SetPosition(servo_num, current_pos);
 			}
 			break ;
 		case recipe_running:

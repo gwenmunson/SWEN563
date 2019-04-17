@@ -26,6 +26,7 @@ enum user_events{
 	move_right,
 	move_left,
 	begin_recipe,
+	sweep,
 	noop
 };
 
