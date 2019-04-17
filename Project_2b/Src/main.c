@@ -568,23 +568,40 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     HAL_UART_Receive_IT(&huart2, &rx_byte, 1);  // one time, kick off receive interrupt (repeated from within callback)
   }
 }
-
+/*
+ * Initializes both servo threads with IDs 0 and 1 respectively as well as the input thread used for handling
+ * user commands, printing out to the user that the threads are being initialized. The servo mutex is also
+ * created for later use.
+ * @param void
+ * @retval void
+*/
 void thread_init(void){
+	//Initializing servo mutex to be used later
 	servo_mutex = xSemaphoreCreateMutex();
 	
+	//Let user know that threads are being initialized
 	char init_print[32];
 	sprintf(init_print, "Initializing Threads\r\n");
 	vPrintString(init_print);
 
+	//Initializing the input thread
 	xTaskCreate(input_thread, "input_thread", 128, NULL, osPriorityNormal, 0);
 	
+	//Initializing the servo threads
 	xTaskCreate(servo_thread, "servo_thread", 128, (void *)&id[0], osPriorityNormal, 0);
 	xTaskCreate(servo_thread, "servo_thread", 128, (void *)&id[1], osPriorityNormal, 0);
 }
-
+/*
+ * Functionality taken from 2a that parses the recipe, delaying, looping, and moving as necessary.
+ * @param op: Recipe operation that's being parsed
+ * @param args: A numerical value used for waiting and moving. Is 0 by default. 
+ * @param i: Servo ID number used to access global variable values for the respective servo.
+ * @retval none
+ */
 void parse_recipe (int op, int args, int i){
 	switch(op){
 			case MOV:
+				//no moving negative values or moving more than periods that can be done
 				if(args >= 0 && args <= 5){
 					wait_count[i] = SERVO_DELAY * (abs(position[i] - args));
 					position[i] = args;
@@ -598,6 +615,7 @@ void parse_recipe (int op, int args, int i){
 				wait_count[i] = (args+1) * (6000);
 				break;
 			case LOOP:
+				//you can't loop while you loop, so store an error state
 				if(in_loop[i] == 1){
 					servo_state[i] = recipe_nested_err;
 				}
@@ -624,20 +642,36 @@ void parse_recipe (int op, int args, int i){
 	}
 }
 
-
+/*
+ * Function used to get the update boolean of a servo to determine if it has a command and needs to
+ * be updated. Used as a quick access for the servo threads. This action is protected by a mutex as
+ * it accesses servo information in order to check if an update needs to occur. 
+ *
+* @param i: Servo ID 
+* @retval: boolean stating whether or not the servo has a command and needs to be updated
+*/
 bool IsNewCommand(int i){
 	xSemaphoreTake(servo_mutex, 10000);
 	bool is_updated = servo_commands.updated[i];
 	xSemaphoreGive(servo_mutex);
-	//char new_comm[20];
-	//sprintf(new_comm,"IsNewCommand = %d\r\n", is_updated);
-	//vPrintString(new_comm);
 	return is_updated;
 }
-
+/*
+ * Servo thread used to represent the running of a servo. If a new command has been entered, the
+ * command will be processed on the servo, taking the semaphore in order to do so. After the command
+ * is processed, the servo's update boolean will be set to false, and the semaphore will be unlocked. 
+ * After this, the servo will run through a recipe command if the recipe is unfinished and then repeat
+ * the whole process.
+ *
+ * @param argument: void pointer for thread containining the integer ID of the servo.
+ * @retval: void
+ *
+*/
 void servo_thread(void* argument){
 	int i = *(int*) argument;
+	//loop forever
 	for(;;){
+		//command handling
 		if(IsNewCommand(i)){
 			xSemaphoreTake(servo_mutex, 10000);
 			enum user_events command = servo_commands.event[i];
@@ -647,6 +681,7 @@ void servo_thread(void* argument){
 			servo_commands.updated[i] = false;
 			xSemaphoreGive(servo_mutex);
 		}
+		//recipe handling
 		if(servo_state[i] == recipe_running){
 		   if(wait_count[i] > 0){
 		   	wait_count[i]--;
@@ -658,53 +693,61 @@ void servo_thread(void* argument){
 		   parse_recipe(op, args, i);
 		   program_counter[i]++;
 		}
+		//LED display for error display
 		if(i == 0){
 			StateLEDs(servo_state[0]);
-		}
-	}
+		}//end if statement
+	}//end for loop
+	
 }
 /*
-void CaptureCommands(void){
-	if(command == 0){
-		return;
-	}
-	else{
-		USART_Write(USART2, &command, 1);
-		ParseCommand(command);
-	}
-}
-*/
+ * Parses the commands submitted by the user, parsing both commands in one function call.
+ * If N (noop) is entered for either command, both servos have their commands set to noop,
+ * and the update booleans for both servos are set to false as no commands are being sent. 
+ * For any other valid command, the update boolean for the respective servo is set to true
+ * so that the servo thread will know that a command has been entered and needs to be updated.
+ *
+ * @param rx_byte[2]: A character array containing both servo commands for servo 0 and 
+ *										servo 1 respectively.
+ * @retval: void
+ *
+ */
 void ParseCommand(char rx_byte[2]){
 	for(int i = 0; i<2; i++){
+		//"n" or "N": no operation command
 		if(rx_byte[i] == 0x58 || rx_byte[i] == 0x78){
 			servo_commands.event[0] = noop;
 			servo_commands.event[1] = noop;
 			servo_commands.updated[0] = false;
 			servo_commands.updated[1] = false;
-			
 			break;
 		}
 		switch(rx_byte[i]){
+			//"p" or "P": pause command
 			case 0x50:
 			case 0x70:
 				servo_commands.event[i] = pause_recipe;
 				servo_commands.updated[i] = true;
 				break;
+			//"c" or "C": contine command
 			case 0x43:
 			case 0x63:
 				servo_commands.event[i] = continue_recipe;
 				servo_commands.updated[i] = true;
 				break;
+			//"r" or "R": right command
 			case 0x52:
 			case 0x72:
 				servo_commands.event[i] = move_right;
 				servo_commands.updated[i] = true;
 				break;
+			//"l" or "L": left command
 			case 0x4c:
 			case 0x6c:
 				servo_commands.event[i] = move_left;
 				servo_commands.updated[i] = true;
 				break;
+			//"b" or "B": begin command
 			case 0x42:
 			case 0x62:
 				servo_commands.event[i] = begin_recipe;
@@ -715,29 +758,26 @@ void ParseCommand(char rx_byte[2]){
 				servo_commands.event[i] = sweep;
 				servo_commands.updated[i] = true;
 				break;
+			//error handling
 			default:
 				servo_commands.event[i] = noop;
 				break;
 		}//end switch statement
-	}
+	}//end for loop
 }
-
 /*
-void GetCommandsTimer(){
-	while(!(USART2->ISR & USART_ISR_RXNE)){
-		if(timeout == 1){
-			command = 0;
-			return;
-		}
-	}
-	uint8_t val = USART2->RDR & 0xFF;;
-	command = val;
-}
-*/
-
+ * Processes the command (event) given the event, current state, and servo ID. 
+ *
+ * @param one_event: The event parsed from user input representing a user command.
+ * @param current_state: The current state of the servo with regards to recipe running. 
+ * @param servo_num: The servo ID.
+ * @retval: void
+ *
+ */
 void process_event(enum user_events one_event, enum states current_state, int servo_num){
 	switch (current_state)
 	{
+		//The command is handled the same way if done or paused
 		case recipe_paused:
     case recipe_done:
 			if (one_event == move_left && position[servo_num] < 5) // prevent moving too far left
@@ -746,12 +786,14 @@ void process_event(enum user_events one_event, enum states current_state, int se
 				wait_count[servo_num] += SERVO_DELAY;
 				SetPosition(servo_num, position[servo_num]) ;
 			}
-			else if(one_event == move_right && position[servo_num] > 0){
+			else if(one_event == move_right && position[servo_num] > 0)// prevent moving too far right
+			{
 				position[servo_num]--;
 				wait_count[servo_num] += SERVO_DELAY;
 				SetPosition(servo_num, position[servo_num]);
 			}
-			else if(one_event == begin_recipe){
+			else if(one_event == begin_recipe)
+			{
                 program_counter[servo_num] = 0;
                 wait_count[servo_num] = 0;
                 in_loop[servo_num] = 0;
@@ -771,6 +813,7 @@ void process_event(enum user_events one_event, enum states current_state, int se
 			}
 			break ;
 		case recipe_running:
+			//only command that has effect when running is pausing
       if(one_event == pause_recipe){
 				servo_state[servo_num] = recipe_paused;
 			}
@@ -779,7 +822,15 @@ void process_event(enum user_events one_event, enum states current_state, int se
 			break;
 	}
 }
-
+/*
+ * Input thread used to handle user input. Takes three characters of input into one buffer by using
+ * the provided code for receiving input instead of USART_Read then parses that command (surrounded 
+ * by a semaphore for saftey), clearing everything afterwards and repeating the process. 
+ *
+ * @param argument: void pointer argument for threads, not actually used for this thread
+ * @retval: void
+ *
+*/
 void input_thread(void* argument){
 	char display_msg[32];
 	sprintf(display_msg, "Input thread initialized\n\r");
