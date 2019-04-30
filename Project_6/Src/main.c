@@ -68,7 +68,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define GYRO_THRESHOLD_DETECTION (10000)
 #define SERVO_THRESHOLD_RANGE 75
 
 #define OPCODE_MASK 0xE0
@@ -665,7 +664,7 @@ void gyro_thread(void* argument) {
 		BSP_GYRO_GetXYZ(gyro_val);   // get raw values from gyro device
 
     // integrate angular velocity to get angle
-    gyro_angle[2] += (int32_t)(gyro_val[2] / GYRO_THRESHOLD_DETECTION);
+    gyro_angle[2] += (int32_t)(gyro_val[2] / 10000);
 
 		gyro_pos = ((gyro_angle[2]+150)*5) + (MIN_SERVO_PWM);
 		if(gyro_pos < MIN_SERVO_PWM){
@@ -718,7 +717,7 @@ void servo_thread(void* argument){
 		vPrintString(print_buffer);
 		for(int i = 1; i<11; i++){
 			next_pos = random(MAX_SERVO_PWM, MIN_SERVO_PWM);
-			while(next_pos > current_pos-2 && next_pos < current_pos+2){
+			while(next_pos > current_pos-200 && next_pos < current_pos+200){
 				next_pos = random(MAX_SERVO_PWM, MIN_SERVO_PWM);
 			}
 			sprintf(print_buffer, "Starting Round %d", i);
