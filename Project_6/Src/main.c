@@ -661,10 +661,10 @@ void thread_init(void){
 
 /*
  * Gyroscopic thread creation. This code works by grabbing the raw gyro value and getting
- * the angle of the gyro (relative to the Z-axis). This angle is used in the calcuation 
- * of the actual position of the board, and the minimum and maximum is recorded.
- * 
- * @param argument: void pointer used for thread instantiation, currently not used within 
+ * the angle of the gyro (relative to the Z-axis). This angle is used in the calcuation
+ * of the actual position of the board.
+ *
+ * @param argument: void pointer used for thread instantiation, currently not used within
  *                  the code.
  * @return: void
  */
@@ -717,13 +717,13 @@ void gyro_thread(void* argument) {
  * Servo thread creation. This code handles the actual game and the user interface. The user
  * decides whether to run the base game (mirror game) or the levels (recipes). The base game
  * runs through 10 rounds, delaying for 5 seconds each round. If the player does not get within
- * 5% of the duty cycle, no win is recorded; otherwise, a win is recorded. The levels are 
+ * 5% of the duty cycle, no win is recorded; otherwise, a win is recorded. The levels are
  * recipes already initialized that the computer servo will use to move around and that the
  * player is expected to get within 5% of the servo in one round. Feedback is displayed after
- * every round, and, at the end of the levels or 10 rounds for the base game, the overall 
+ * every round, and, at the end of the levels or 10 rounds for the base game, the overall
  * score is displayed, and the game ends. The cycle is then repeated again.
- * 
- * @param argument: void pointer used for thread instantiation, currently not used within 
+ *
+ * @param argument: void pointer used for thread instantiation, currently not used within
  *                  the code.
  * @return: void
  */
@@ -795,7 +795,7 @@ void servo_thread(void* argument){
 			int op = recipe_command & OPCODE_MASK;
 			int args = recipe_command & ARGS_MASK;
 			parse_recipe(op, args);
-			
+
 			current_pos = FindCurrentPos(args);
 
 			osDelay(5000);//simulate 5 seconds real time
@@ -814,7 +814,7 @@ void servo_thread(void* argument){
 		sprintf(print_buffer, "Score after level 1: %d\r\n", score);
 		vPrintString(print_buffer);
 		osDelay(5000);//5 seconds delay for a break
-		
+
 		//Level 2 Inintialization
 		sprintf(print_buffer,"Starting Level 2\r\n");
 		vPrintString(print_buffer);
@@ -846,7 +846,7 @@ void servo_thread(void* argument){
 		sprintf(print_buffer, "Score after level 2: %d\r\n", score);
 		vPrintString(print_buffer);
 		osDelay(5000);//5 seconds delay for a break
-		
+
 		//Level 3 Initialization
 		sprintf(print_buffer,"Starting Level 3\r\n");
 		vPrintString(print_buffer);
@@ -874,7 +874,7 @@ void servo_thread(void* argument){
 				vPrintString(print_buffer);
 			}//end else statement
 		}//end for loop
-		//End of Level 3 
+		//End of Level 3
 		sprintf(print_buffer, "Final Score: %d\r\nGAME OVER\r\n", score);
 		vPrintString(print_buffer);
 	}
@@ -885,7 +885,7 @@ void servo_thread(void* argument){
  * Random Number Generator using freeRTOS's provided RNG code. Starts at 0.
  *
  * @param max: the max value that a random number can be (range is 0 to max).
- * @param min: the min value that a random number can be (range is 0 to max). 
+ * @param min: the min value that a random number can be (range is 0 to max).
                Used to find true max value for range of numbers.
  * @return: random number generated
  */
