@@ -648,13 +648,26 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
   }
 }
 
+/*
+ * Initializes the servo thread and the gyro thread.
+ * @param: void
+ * @return: void
+ */
 void thread_init(void){
 
 	xTaskCreate (servo_thread,	"servo_thread", 256, NULL, osPriorityNormal, NULL);
 	xTaskCreate (gyro_thread,	"gyro_thread", 256, NULL, osPriorityNormal, NULL);
 }
 
-
+/*
+ * Gyroscopic thread creation. This code works by grabbing the raw gyro value and getting
+ * the angle of the gyro (relative to the Z-axis). This angle is used in the calcuation 
+ * of the actual position of the board, and the minimum and maximum is recorded.
+ * 
+ * @param argument: void pointer used for thread instantiation, currently not used within 
+ *                  the code.
+ * @return: void
+ */
 void gyro_thread(void* argument) {
   char buffer[128];
 	int gyro_pos = 0;
@@ -666,6 +679,7 @@ void gyro_thread(void* argument) {
     // integrate angular velocity to get angle
     gyro_angle[2] += (int32_t)(gyro_val[2] / 10000);
 
+		//Player position setting functionality
 		gyro_pos = ((gyro_angle[2]+150)*5) + (MIN_SERVO_PWM);
 		if(gyro_pos < MIN_SERVO_PWM){
 			SetPosition(PLAYER_SERVO, MIN_SERVO_PWM);
@@ -696,30 +710,49 @@ void gyro_thread(void* argument) {
 			num_display = 0;
 		}
 		*/
-    osDelay(50);
+    osDelay(50);//delay as to not run too fast
   }
 }
-
+/*
+ * Servo thread creation. This code handles the actual game and the user interface. The user
+ * decides whether to run the base game (mirror game) or the levels (recipes). The base game
+ * runs through 10 rounds, delaying for 5 seconds each round. If the player does not get within
+ * 5% of the duty cycle, no win is recorded; otherwise, a win is recorded. The levels are 
+ * recipes already initialized that the computer servo will use to move around and that the
+ * player is expected to get within 5% of the servo in one round. Feedback is displayed after
+ * every round, and, at the end of the levels or 10 rounds for the base game, the overall 
+ * score is displayed, and the game ends. The cycle is then repeated again.
+ * 
+ * @param argument: void pointer used for thread instantiation, currently not used within 
+ *                  the code.
+ * @return: void
+ */
 void servo_thread(void* argument){
 	int current_pos = 0, next_pos = 0;
-	int score = 0;
-	uint8_t rx_byte = 0;
+	int score = 0;//total amount of wins
+	uint8_t rx_byte = 0;//character from user input
 
+	//Thread Startup
 	sprintf(print_buffer,"Starting game thread!\r\n");
 	vPrintString(print_buffer);
 	sprintf(print_buffer, "Would you like to:\r\n\t1) Play base game\r\n\t2) Play game levels\r\n");
 	vPrintString(print_buffer);
+	//Waiting for user input to begin...
 	while(rx_byte == 0){
 		HAL_UART_Receive_IT(&huart2, &rx_byte, 1);
 	}
+	//Base Game functionality
 	if(rx_byte == '1'){
 		sprintf(print_buffer, "Starting base game!\r\n");
 		vPrintString(print_buffer);
+		//Loop for rounds 1-10
 		for(int i = 1; i<11; i++){
 			next_pos = random(MAX_SERVO_PWM, MIN_SERVO_PWM);
+			//handling for different position than last round
 			while(next_pos > current_pos-200 && next_pos < current_pos+200){
 				next_pos = random(MAX_SERVO_PWM, MIN_SERVO_PWM);
 			}
+			//Beginning of round
 			sprintf(print_buffer, "Starting Round %d", i);
 			vPrintString(print_buffer);
 			SetPosition(COMPUTER_SERVO, next_pos);
@@ -730,26 +763,31 @@ void servo_thread(void* argument){
 			//vPrintString(print_buffer);
 			//display_player_pos = 1;
 
-			osDelay(5000);
+			osDelay(5000);//Simulating round time
 			//display_player_pos = 0;
+			//Successful win!
 			if(player_pos >= (current_pos - SERVO_THRESHOLD_RANGE) && player_pos <= (current_pos + SERVO_THRESHOLD_RANGE)){
 				score++;
 				sprintf(print_buffer, ": PLAYER SUCCESSFUL!\r\n");
 				vPrintString(print_buffer);
 			}
+			//Failure
 			else{
 				sprintf(print_buffer, ": PLAYER FAIL!\r\n");
 				vPrintString(print_buffer);
-			}
-		}
+			}//end else statement
+		}//end for loop
+		//End of game
 		sprintf(print_buffer, "Score: %d\r\nGAME OVER\r\n", score);
 		vPrintString(print_buffer);
 	}
 
-
+ //Level Game functionality
 	if(rx_byte == '2'){
+		//Initialization for Level 1
 		sprintf(print_buffer,"Starting Level 1\r\n");
 		vPrintString(print_buffer);
+		//Rounds 1-5
 		for(int i = 0; i<5; i++){
 			sprintf(print_buffer, "Starting Round %d", i+1);
 			vPrintString(print_buffer);
@@ -757,10 +795,10 @@ void servo_thread(void* argument){
 			int op = recipe_command & OPCODE_MASK;
 			int args = recipe_command & ARGS_MASK;
 			parse_recipe(op, args);
-
+			
 			current_pos = FindCurrentPos(args);
 
-			osDelay(5000);
+			osDelay(5000);//simulate 5 seconds real time
 
 			if(player_pos >= (current_pos - SERVO_THRESHOLD_RANGE) && player_pos <= (current_pos + SERVO_THRESHOLD_RANGE)){
 				score++;
@@ -770,13 +808,17 @@ void servo_thread(void* argument){
 			else{
 				sprintf(print_buffer, ": PLAYER FAIL!\r\n");
 				vPrintString(print_buffer);
-			}
-		}
+			}//end else statement
+		}//end for loop
+		//Level 1 Results
 		sprintf(print_buffer, "Score after level 1: %d\r\n", score);
 		vPrintString(print_buffer);
-		osDelay(5000);
+		osDelay(5000);//5 seconds delay for a break
+		
+		//Level 2 Inintialization
 		sprintf(print_buffer,"Starting Level 2\r\n");
 		vPrintString(print_buffer);
+		//Rounds 1-5 for Level 2
 		for(int i = 0; i<5; i++){
 			sprintf(print_buffer, "Starting Round %d", i+1);
 			vPrintString(print_buffer);
@@ -786,22 +828,29 @@ void servo_thread(void* argument){
 			parse_recipe(op, args);
 			current_pos = FindCurrentPos(args);
 
+			//Level 2 only provides 3 seconds to win
 			osDelay(3000);
+			//Success!
 			if(player_pos >= (current_pos - SERVO_THRESHOLD_RANGE) && player_pos <= (current_pos + SERVO_THRESHOLD_RANGE)){
 				score++;
 				sprintf(print_buffer, ": PLAYER SUCCESSFUL!\r\n");
 				vPrintString(print_buffer);
 			}
+			//Failure
 			else{
 				sprintf(print_buffer, ": PLAYER FAIL!\r\n");
 				vPrintString(print_buffer);
-			}
-		}
+			}//end else statement
+		}//end for loop
+		//End of Level 2
 		sprintf(print_buffer, "Score after level 2: %d\r\n", score);
 		vPrintString(print_buffer);
-		osDelay(5000);
+		osDelay(5000);//5 seconds delay for a break
+		
+		//Level 3 Initialization
 		sprintf(print_buffer,"Starting Level 3\r\n");
 		vPrintString(print_buffer);
+		//Rounds 1-5 for Level 3
 		for(int i = 0; i<5; i++){
 			sprintf(print_buffer, "Starting Round %d", i+1);
 			vPrintString(print_buffer);
@@ -811,17 +860,21 @@ void servo_thread(void* argument){
 			parse_recipe(op, args);
 			current_pos = FindCurrentPos(args);
 
+			//Level 3 only allows for 1 second to complete
 			osDelay(1000);
+			//Success!
 			if(player_pos >= (current_pos - SERVO_THRESHOLD_RANGE) && player_pos <= (current_pos + SERVO_THRESHOLD_RANGE)){
 				score++;
 				sprintf(print_buffer, ": PLAYER SUCCESSFUL!\r\n");
 				vPrintString(print_buffer);
 			}
+			//Failure
 			else{
 				sprintf(print_buffer, ": PLAYER FAIL!\r\n");
 				vPrintString(print_buffer);
-			}
-		}
+			}//end else statement
+		}//end for loop
+		//End of Level 3 
 		sprintf(print_buffer, "Final Score: %d\r\nGAME OVER\r\n", score);
 		vPrintString(print_buffer);
 	}
@@ -831,8 +884,10 @@ void servo_thread(void* argument){
 /*
  * Random Number Generator using freeRTOS's provided RNG code. Starts at 0.
  *
- * param max: the max value that a random number can be (range is 0 to max).
- * return: random number generated
+ * @param max: the max value that a random number can be (range is 0 to max).
+ * @param min: the min value that a random number can be (range is 0 to max). 
+               Used to find true max value for range of numbers.
+ * @return: random number generated
  */
 int random(int max, int min){
 	max = max-min;
@@ -842,7 +897,13 @@ int random(int max, int min){
 
 	return (int)random_number;
 }
-
+/*
+ * Recipe parsing code borrowed from previous projects used for level recipe parsing.
+ *
+ * @param op: The command provided
+ * @param args: Arguments for the command provided
+ * @return: void
+ */
 void parse_recipe (int op, int args){
 	switch(op){
 			case MOV:
@@ -873,6 +934,11 @@ void parse_recipe (int op, int args){
 	}
 }
 
+/*
+ * Used to reference positions.
+ * @param arg: position being passed in
+ * @return: position being referenced
+ */
 int FindCurrentPos(int arg){
 	switch(arg){
 		case 1:
